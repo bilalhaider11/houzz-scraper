@@ -1,0 +1,712 @@
+# 🏠 Houzz Lead Generation Pipeline v1.0
+
+**Latest Update: August 2025** - Complete rewrite with multi-platform support, advanced 4-phase pipeline, and enterprise-grade features
+
+A production-ready, enterprise-grade 4-phase data scraping and enrichment pipeline that extracts validated leads from **Houzz** and **Architizer** across all 50 U.S. states and 7+ professional types. Features advanced ZeroBounce integration, Google Custom Search enrichment, Playwright-based website mining, and intelligent email prioritization.
+
+## ✨ Core Features
+
+### 🎯 Multi-Platform Support
+- **🏠 Houzz Integration**: Scrapes 50+ US states and 7 professional types
+- **🏗️ Architizer Integration**: Scrapes architectural firms and professionals
+- **🔄 Unified Pipeline**: Same 4-phase process for both platforms
+
+### 🚀 4-Phase Pipeline Architecture
+- **Phase 1**: Platform Profile Scraping (Houzz/Architizer)
+- **Phase 2**: Advanced Website Email Mining (Playwright)
+- **Phase 3**: Google Custom Search Enrichment
+- **Phase 4**: ZeroBounce Verification & CSV Export
+
+### 🔧 Advanced Features
+- **✅ ZeroBounce Integration**: Production-grade email verification with smart credit management
+- **🌐 Playwright Automation**: JavaScript-heavy website scraping with browser automation
+- **🔍 Google Custom Search**: Finds Gmail addresses and LinkedIn profiles
+- **📊 Intelligent Email Prioritization**: Personal > Business > Generic email selection
+- **💾 SQLite Database**: Persistent storage with progress tracking and resume capability
+- **🛡️ Anti-Detection**: CAPTCHA handling, proxy support, rate limiting, user-agent rotation
+- **⚡ High Performance**: Concurrent processing, efficient database operations, memory optimization
+- **🎛️ Flexible Execution**: Run individual phases or complete pipeline with granular control
+
+## 📋 Prerequisites
+
+### System Requirements
+
+- **Python**: Version 3.8 or higher
+- **Memory**: Minimum 8GB RAM (16GB+ recommended for production)
+- **Storage**: At least 5GB free space (10GB+ recommended for large datasets)
+- **Internet**: Stable broadband connection (minimum 50 Mbps recommended)
+
+### Required Software Installation
+
+#### 1. Install Python 3.8+ (if not already installed)
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv python3-dev
+```
+
+**CentOS/RHEL/Fedora:**
+```bash
+# CentOS/RHEL
+sudo yum install -y python3 python3-pip python3-venv python3-devel
+# Fedora
+sudo dnf install -y python3 python3-pip python3-venv python3-devel
+```
+
+**macOS:**
+```bash
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# Install Python
+brew install python@3.10
+```
+
+**Windows (WSL recommended):**
+```bash
+# Enable WSL and install Ubuntu from Microsoft Store
+# Then follow Ubuntu instructions above
+```
+
+#### 2. Install Git (if not already installed)
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install -y git
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum install -y git
+```
+
+**macOS:**
+```bash
+brew install git
+```
+
+#### 3. Install System Dependencies
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install -y curl wget build-essential libssl-dev libffi-dev
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum groupinstall -y "Development Tools"
+sudo yum install -y curl wget openssl-devel libffi-devel
+```
+
+### Verify Installation
+
+```bash
+# Check Python version (should be 3.8+)
+python3 --version
+
+# Check pip
+pip3 --version
+
+# Check git
+git --version
+```
+
+## 🚀 Quick Start
+
+### 1. Setup Environment
+
+```bash
+# Clone and navigate to the project
+git clone <repository-url>
+cd houzz-scraper
+
+# Run the deployment script
+chmod +x deploy.sh
+./deploy.sh
+```
+
+### 2. Configure API Keys
+
+**IMPORTANT**: Create a `.env` file in the project root with your API keys:
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Edit the .env file with your actual API keys
+nano .env
+```
+
+**Required API Keys:**
+- **ZeroBounce API Key**: For production-grade email verification ([Get API key](https://www.zerobounce.net/))
+- **Google Custom Search API**: For Gmail discovery and LinkedIn enrichment ([Setup instructions below](#google-custom-search-api-setup))
+- **Google Custom Search CX**: Search engine ID for Custom Search API
+
+**Note**: The pipeline can run without API keys but with reduced functionality:
+- Without ZeroBounce: Basic email validation only (use `--no-email-verification`)
+- Without Google APIs: No Gmail discovery or LinkedIn enrichment
+
+### 3. Activate Virtual Environment
+
+**IMPORTANT**: Always activate the virtual environment before running any commands:
+
+```bash
+# Activate the virtual environment
+source venv/bin/activate
+
+# Your terminal prompt should now show (venv) at the beginning
+# (venv) user@hostname:~/houzz-scraper$
+```
+
+### 4. List Available States
+
+```bash
+# Make sure virtual environment is activated first!
+source venv/bin/activate
+python3 main.py --platform houzz --list-states
+```
+
+### 5. List Available Cities
+
+```bash
+# List all cities in a specific state
+python3 main.py --platform houzz --list-cities california
+
+# List cities in other states
+python3 main.py --platform houzz --list-cities texas
+python3 main.py --platform houzz --list-cities new-york
+python3 main.py --platform houzz --list-cities florida
+
+# Example output for California:
+# 🏙️  Cities in California
+# ==================================================
+# Total Cities: 18
+# 
+#  1. Los Angeles County             (Region ID: r_5368381)
+#  2. Los Angeles                    (Region ID: r_5368361)
+#  3. Brentwood Los Angeles          (Region ID: r_101182514)
+#  4. Bel Air                        (Region ID: r_101182513)
+#  5. Hollywood                      (Region ID: r_101182515)
+#  ... and more cities
+```
+
+### 6. Test Run
+
+```bash
+# Dry run to see what would be scraped
+python3 main.py --platform houzz --dry-run --states california
+
+# Test specific states with limited pages
+python3 main.py --platform houzz --states california texas --max-pages 5
+
+# Test Architizer platform
+python3 main.py --platform architizer --phase scrape --max-pages 3
+```
+
+### 6. Production Run
+
+```bash
+# Full production pipeline (all 4 phases, all states, Houzz platform)
+python3 main.py --platform houzz
+
+# Specific states with ZeroBounce verification
+python3 main.py --platform houzz --states california texas florida
+
+# Skip ZeroBounce verification (faster, uses basic validation)
+python3 main.py --platform houzz --states california --no-email-verification
+
+# Custom scraping parameters
+python3 main.py --platform houzz --states california --max-pages 25 --start-page 1
+
+# Architizer platform
+python3 main.py --platform architizer --phase scrape --max-pages 10
+```
+
+## 🔄 4-Phase Pipeline Process
+
+The Lead Generation Pipeline operates in 4 distinct phases, each designed for optimal data extraction and enrichment:
+
+### Phase 1: 🏠 Platform Profile Scraping
+**What it does:**
+- Extracts professional profiles from Houzz.com or Architizer.com
+- Scrapes 50+ US states and 7+ professional types (Houzz) or architectural firms (Architizer)
+- Collects basic profile data: name, location, website, phone, social links
+- Stores all profiles in SQLite database for persistence and progress tracking
+- Supports resume capability if interrupted
+
+**Commands:**
+```bash
+# Houzz platform
+python3 main.py --platform houzz --phase scrape --states california texas
+
+# Architizer platform
+python3 main.py --platform architizer --phase scrape --max-pages 10
+```
+
+**Output:** Database populated with professional profiles and basic contact information.
+
+---
+
+### Phase 2: 🌐 Advanced Website Email Mining 
+**What it does:**
+- Uses Playwright browser automation to visit each professional's website
+- Intelligently extracts personal and business email addresses from web pages
+- Categorizes emails (personal: Gmail, Yahoo vs. business: company domains)
+- Processes websites in parallel batches for maximum efficiency
+- Handles JavaScript-heavy sites and various email formats
+- Extracts phone numbers from websites (Architizer platform)
+
+**Command:**
+```bash
+python3 main.py --platform houzz --phase websearch
+# or
+python3 main.py --platform architizer --phase websearch
+```
+
+**Output:** Enhanced profiles with personal and business emails extracted from professional websites.
+
+---
+
+### Phase 3: 🔍 Google Custom Search Enrichment
+**What it does:**
+- Uses Google Custom Search API to find additional Gmail addresses
+- Performs targeted searches to discover LinkedIn profiles
+- Enriches existing data with additional personal contact methods
+- Merges new email findings with existing website-scraped emails
+- Applies intelligent deduplication and prioritization
+- Finds zipcodes and additional location data
+
+**Command:**
+```bash
+python3 main.py --platform houzz --phase googlesearch
+# or
+python3 main.py --platform architizer --phase googlesearch
+```
+
+**Output:** Profiles further enriched with Gmail addresses, LinkedIn profile URLs, and location data.
+
+---
+
+### Phase 4: ✅ Email Verification & CSV Export
+**What it does:**
+**Email Verification (ZeroBounce):**
+- Verifies email deliverability using ZeroBounce API
+- Prioritizes personal emails over business emails for verification
+- Uses smart caching to avoid duplicate API calls (saves credits)
+- Removes invalid/undeliverable emails to improve data quality
+- Falls back to business email verification if no personal emails validate
+
+**Intelligent CSV Export:**
+- Exports all enriched and verified profile data to timestamped CSV files
+- Applies intelligent email prioritization (personal > business > generic)
+- Includes all collected data: verified emails, phones, LinkedIn, websites
+- Creates production-ready lead files for immediate outreach use
+- Platform-specific column ordering and data formatting
+
+**Commands:**
+```bash
+# With ZeroBounce verification (default)
+python3 main.py --platform houzz --phase export
+
+# Skip verification to save API credits
+python3 main.py --platform houzz --phase export --no-email-verification
+```
+
+**Output:** Production-ready CSV file with verified leads and comprehensive contact data.
+
+---
+
+### 🚀 Complete Pipeline Execution
+
+Run all 4 phases in sequence for end-to-end lead generation:
+
+```bash
+# Full pipeline with ZeroBounce verification (Houzz)
+python3 main.py --platform houzz --states california texas
+
+# Full pipeline without verification (faster, basic validation only)
+python3 main.py --platform houzz --states california texas --no-email-verification
+
+# All states, all professional types (Houzz)
+python3 main.py --platform houzz
+
+# Architizer platform
+python3 main.py --platform architizer
+```
+
+**Phase Execution Order:**
+```
+1. Platform Scraping → 2. Website Email Mining → 3. Google Search Enrichment → 4. Verification & Export
+```
+
+**Key Benefits:**
+- **Modularity**: Run individual phases as needed
+- **Resume Capability**: Pick up where you left off if interrupted
+- **Data Quality**: Each phase builds upon and enhances the previous
+- **Efficiency**: Parallel processing and smart caching throughout
+
+## 📋 Usage Examples
+
+### Basic Usage
+```bash
+# Production run for all states (Houzz)
+python3 main.py --platform houzz
+
+# Specific states only
+python3 main.py --platform houzz --states california texas florida
+
+# Control scraping parameters
+python3 main.py --platform houzz --states florida --max-pages 10 --start-page 1
+
+# Run specific phases
+python3 main.py --platform houzz --phase export  # Export existing data to CSV
+```
+
+### Advanced Options
+```bash
+# Skip email verification (faster)
+python3 main.py --platform houzz --no-email-verification
+
+# Specific professional types (Houzz only)
+python3 main.py --platform houzz --professional-types interior-designer architect
+
+# Custom scraping parameters
+python3 main.py --platform houzz --states california --max-pages 15 --start-page 3
+
+# Architizer platform with pagination
+python3 main.py --platform architizer --phase scrape --start-page 1 --max-pages 5
+python3 main.py --platform architizer --phase scrape --start-page 11 --max-pages 10  # Pages 11-20
+
+# Custom output directory
+python3 main.py --platform houzz --output-dir /path/to/output
+
+# Debug mode
+python3 main.py --platform houzz --log-level DEBUG
+
+# Dry run (see what would be scraped)
+python3 main.py --platform houzz --dry-run
+
+# Check scraping progress statistics
+python3 main.py --platform houzz --stats
+```
+
+### Platform-Specific Pagination
+
+#### Houzz Pagination
+Houzz uses URL-based pagination with `?fi=` parameters:
+```bash
+# Scrape first 10 pages (pages 1-10)
+python3 main.py --platform houzz --start-page 1 --max-pages 10
+
+# Scrape pages 11-20
+python3 main.py --platform houzz --start-page 11 --max-pages 10
+```
+
+#### Architizer Pagination
+Architizer uses infinite scroll with "Load More" button clicks:
+```bash
+# Scrape first 5 pages (load 4 more times after initial page)
+python3 main.py --platform architizer --start-page 1 --max-pages 5
+
+# Scrape pages 11-15 (load 10 times to reach page 11, then scrape 5 pages)
+python3 main.py --platform architizer --start-page 11 --max-pages 5
+
+# Scrape all available pages (no max_pages limit)
+python3 main.py --platform architizer --start-page 1
+```
+
+## 💾 Data Persistence: SQLite Database
+
+All scraped profiles are automatically stored in a local SQLite database file to ensure data persistence and allow for easy analysis.
+
+- **Database File**: `data/scraper.db`
+- **Location**: The database is stored in the `data` directory within your project.
+- **Format**: The `professionals` table contains all the scraped data, with social links and emails stored as JSON strings.
+
+### Database Schema
+
+The `professionals` table includes the following columns:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PRIMARY KEY | Auto-incrementing unique identifier |
+| `profile_url` | TEXT UNIQUE | Generic URL field for any platform |
+| `platform` | TEXT | Platform identifier (houzz, architizer) |
+| `name` | TEXT | Professional's full name |
+| `website` | TEXT | Professional's website URL |
+| `professional_type` | TEXT | Type of professional (interior-designer, architect, etc.) |
+| `phone` | TEXT | Phone number (formatted) |
+| `emails` | TEXT | JSON string: `{"personal": [...], "business": [...]}` |
+| `address` | TEXT | Full address |
+| `zip_code` | TEXT | ZIP code |
+| `rating` | REAL | Professional rating |
+| `reviews_count` | INTEGER | Number of reviews |
+| `social_links` | TEXT | JSON string of social media links |
+| `typical_job_cost` | TEXT | Typical job cost range |
+| `followers_count` | INTEGER | Number of followers |
+| `is_email_verified` | INTEGER | Email verification status (0/1) |
+| `website_scraped` | INTEGER | Website scraping status (0/1) |
+| `google_search_done` | INTEGER | Google search status (0/1) |
+| `is_completed` | INTEGER | Export completion status (0/1) |
+| `created_at` | TIMESTAMP | Record creation timestamp |
+| `updated_at` | TIMESTAMP | Record update timestamp |
+
+### Accessing the Database
+
+You can access the database using any standard SQLite client:
+
+**Command-Line `sqlite3` client:**
+```bash
+# Open the database
+sqlite3 data/scraper.db
+
+#-- In the SQLite prompt --#
+
+-- List tables
+.tables
+
+-- View table schema
+.schema professionals
+
+-- Count total profiles
+SELECT COUNT(*) FROM professionals;
+
+-- View first 10 profiles
+SELECT profile_url, name, website, phone, emails FROM professionals LIMIT 10;
+
+-- Check scraping progress
+SELECT 
+  COUNT(*) as total_profiles,
+  SUM(website_scraped) as websites_scraped,
+  SUM(google_search_done) as google_searches_done,
+  SUM(is_email_verified) as emails_verified
+FROM professionals;
+
+-- Exit
+.quit
+```
+
+## 📁 Project Structure
+
+```
+houzz-scraper/
+├── main.py                 # Main executable script
+├── requirements.txt        # Python dependencies
+├── deploy.sh              # Deployment script
+├── .env.example           # Environment variables template (copy to .env)
+├── config/
+│   └── config.py          # Configuration settings
+├── src/
+│   ├── models.py          # Data models and validation
+│   ├── pipeline.py        # Main 4-phase orchestration pipeline
+│   ├── houzz_scraper.py   # Houzz website scraper
+│   ├── architizer_scraper.py # Architizer website scraper
+│   ├── website_scraper.py # Professional website scraper (Playwright)
+│   ├── google_searcher.py # Google Custom Search enrichment
+│   ├── zerobounce_verifier.py # ZeroBounce email verification
+│   ├── database_manager.py # SQLite database manager
+│   ├── database_pool.py   # Database connection pooling
+│   ├── email_service.py   # Email processing utilities
+│   ├── phone_formatter.py # Phone number formatting
+│   ├── url_cleaner.py     # URL cleaning utility
+│   ├── cache_manager.py   # Caching system
+│   └── common_utils.py    # Common utilities
+├── data/                  # Output CSV files and SQLite database
+│   └── scraper.db         # SQLite database (created automatically)
+├── logs/                  # Log files
+└── venv/                  # Python virtual environment
+```
+
+## 🔧 Configuration
+
+### Environment Variables (.env file)
+
+Create a `.env` file in the project root with the following variables:
+
+```bash
+# Required API Keys
+ZEROBOUNCE_API_KEY=your_zerobounce_api_key_here
+GOOGLE_SEARCH_API_KEY=your_google_api_key_here
+GOOGLE_SEARCH_CX=your_google_custom_search_engine_id_here
+
+# Optional Proxy Settings
+PROXY_USERNAME=your_proxy_username
+PROXY_PASSWORD=your_proxy_password
+USE_PROXY_ROTATION=false
+PROXY_ROTATION_INTERVAL=10
+WEBSHARE_API_KEY=your_webshare_api_key
+WEBSHARE_PROXY_LIST=your_proxy_list_url
+
+# Environment Settings
+HEADLESS=true
+TIMEOUT=45
+MAX_PAGES_PER_STATE=50
+OUTPUT_DIR=data
+LOG_DIR=logs
+```
+
+### Email Prioritization Logic
+
+The system prioritizes emails in the following order:
+
+1. **Personal Emails** (gmail.com, yahoo.com, hotmail.com, outlook.com, icloud.com)
+2. **Company Emails** (info@, contact@, hello@, office@, admin@)
+3. **Any Other Valid Email** (if no personal/company email found)
+4. **Blacklisted** (noreply@, no-reply@, donotreply@, support@, sales@)
+
+### Professional Types Scraped (Houzz)
+
+- Interior Designers (`interior-designer`)
+- Architects (`architect`)
+- General Contractors (`general-contractor`)
+- Design-Build Firms (`design-build`)
+- Landscape Architects (`landscape-architect`)
+- Kitchen and Bath Designers (`kitchen-and-bath`)
+- Home Builders (`home-builders`)
+
+### Data Fields Exported
+
+| Field | Description |
+|-------|-------------|
+| `profile_url` | Original profile URL |
+| `name` | Professional's full name |
+| `website` | Professional's website |
+| `emails` | JSON string of all emails |
+| `phone` | Phone number (formatted) |
+| `address` | Full address |
+| `professional_type` | Type of professional |
+| `social_links` | JSON string of social media links |
+| `is_email_verified` | Email verification status |
+| `zip_code` | ZIP code |
+| `website_scraped` | Website scraping status |
+| `google_search_done` | Google search status |
+| `created_at` | Record creation timestamp |
+| `updated_at` | Record update timestamp |
+
+## 🛡️ Anti-Detection Features
+
+- **Dynamic User Agents**: Rotates user agents to avoid detection
+- **Request Delays**: Random delays between requests
+- **Proxy Support**: Built-in proxy rotation capabilities
+- **Browser Automation**: Uses Playwright for JavaScript-heavy sites
+- **CAPTCHA Handling**: Automatic retry with delays
+- **Session Management**: Maintains realistic browsing patterns
+- **Rate Limiting**: Respects website rate limits
+- **Error Handling**: Graceful failure handling
+
+## 📊 Production Monitoring
+
+### Logging
+- **File Logs**: Rotating daily logs in `logs/` directory
+- **Console Output**: Real-time progress updates
+- **Error Tracking**: Detailed error logging with stack traces
+
+### Progress Tracking
+- **State Management**: Saves progress to resume interrupted sessions
+- **Batch Processing**: Processes leads in configurable batches
+- **Completion Tracking**: Tracks completed URLs and states
+
+### Performance Metrics
+- **Scraping Speed**: ~50-100 profiles per minute
+- **Success Rate**: Typically 80-90% successful extraction
+- **Email Verification**: Real-time validation with ZeroBounce
+- **Website Mining**: ~10-20 websites per minute with Playwright
+
+## 🎯 Expected Output
+
+### Sample Output Statistics
+- **Total Profiles**: 50,000-100,000+ (depending on scope)
+- **Complete Contacts**: ~60-80% with all required fields
+- **Personal Emails**: ~30-40% of total
+- **Company Emails**: ~40-50% of total  
+- **Phone Numbers**: ~70-85% coverage
+- **Zip Codes**: ~80-90% coverage
+
+### CSV File Format
+```csv
+profile_url,name,website,emails,phone,address,professional_type,social_links,is_email_verified,zip_code,website_scraped,google_search_done,created_at,updated_at
+https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":[""john.smith@gmail.com""],""business"":[""info@example.com""]}",+15551234567,123 Main St,interior-designer,"{""linkedin"":""https://linkedin.com/in/johnsmith""}",1,90210,1,1,2024-01-15T10:30:00,2024-01-15T10:30:00
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **"No API key configured"**
+   - Solution: Add required API keys to `.env` file
+
+2. **"Playwright browser not found"**  
+   - Solution: Run `playwright install chromium`
+
+3. **"Module not found"**
+   - Solution: Ensure virtual environment is activated: `source venv/bin/activate`
+
+4. **"Environment file not found"**
+   - Solution: Copy `.env.example` to `.env` and configure your API keys
+
+5. **"Rate limit exceeded"**
+   - Solution: Increase delays in config or use proxy service
+
+6. **"Database locked"**
+   - Solution: Ensure no other processes are accessing the database
+
+### Debug Mode
+```bash
+python3 main.py --platform houzz --log-level DEBUG
+```
+
+### Check System Status
+```bash
+# Check scraping progress
+python3 main.py --platform houzz --stats
+
+# Check database status
+sqlite3 data/scraper.db "SELECT COUNT(*) FROM professionals;"
+```
+
+## 🔧 Google Custom Search API Setup
+
+To enable Gmail discovery and LinkedIn enrichment, you need to set up Google Custom Search API:
+
+### 1. Create Google Cloud Project
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable the Custom Search API
+
+### 2. Create API Key
+1. Go to "APIs & Services" > "Credentials"
+2. Click "Create Credentials" > "API Key"
+3. Copy the API key to your `.env` file
+
+### 3. Create Custom Search Engine
+1. Go to [Google Programmable Search Engine](https://programmablesearchengine.google.com/)
+2. Click "Create a search engine"
+3. Enter any website (e.g., `https://www.google.com`)
+4. Get your Search Engine ID (cx) and add to `.env` file
+
+### 4. Configure Search Settings
+1. In your search engine settings, enable "Search the entire web"
+2. Add sites to search: `linkedin.com`, `gmail.com`, etc.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Submit a pull request
+
+## 📄 License
+
+This project is for educational and legitimate business use only. Please respect website terms of service and rate limits.
+
+## ⚠️ Disclaimer
+
+This tool is designed for legitimate lead generation purposes. Users are responsible for:
+- Complying with website terms of service
+- Respecting rate limits and robots.txt
+- Following applicable data privacy laws
+- Using collected data ethically and legally
+
+---
+
+**Need help?** Check the logs in `logs/` directory or run with `--log-level DEBUG` for detailed output.

@@ -1,0 +1,150 @@
+# =====================================================
+# HOUZZ LEAD GENERATION PIPELINE v2.0 - PRODUCTION REQUIREMENTS
+# =====================================================
+# Core Dependencies for Multi-Platform Web Scraping and Data Processing
+# =====================================================
+
+# =====================================================
+# WEB SCRAPING & BROWSER AUTOMATION
+# =====================================================
+# Playwright for JavaScript-heavy websites (primary browser automation)
+playwright==1.42.0
+
+# BeautifulSoup for HTML parsing
+beautifulsoup4==4.12.3
+
+# Requests for HTTP requests with session management
+requests==2.31.0
+
+# HTML/XML parsing
+lxml==5.1.0
+
+# User agent rotation
+fake-useragent==1.4.0
+
+# =====================================================
+# ASYNC & NETWORKING
+# =====================================================
+# Async HTTP client
+aiohttp==3.9.3
+
+# HTTP/HTTPS with retries
+urllib3==2.2.1
+
+# =====================================================
+# DATA PROCESSING & ANALYSIS
+# =====================================================
+# Pandas for data manipulation and CSV export
+pandas>=2.2.0
+
+# NumPy for numerical operations
+numpy>=1.26.0
+
+# Excel file support
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# =====================================================
+# CONFIGURATION & ENVIRONMENT
+# =====================================================
+# Environment variable management
+python-dotenv==1.0.1
+
+# Data validation and settings management
+pydantic==2.6.1
+
+# =====================================================
+# DATA VALIDATION & VERIFICATION
+# =====================================================
+# Phone number parsing and formatting
+phonenumbers==8.13.27
+
+# Email validation
+email-validator==2.1.0.post1
+
+# DNS resolution for MX record checking
+dnspython==2.5.0
+
+# =====================================================
+# SEARCH & ENRICHMENT APIs
+# =====================================================
+# Google Custom Search API (Primary search provider)
+google-api-python-client==2.116.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+
+# =====================================================
+# LOGGING & MONITORING
+# =====================================================
+# Advanced logging with colors and rotation
+loguru==0.7.2
+
+# Progress bars
+tqdm==4.66.2
+
+# =====================================================
+# JSON & SCHEMA VALIDATION
+# =====================================================
+# JSON schema validation
+jsonschema==4.21.1
+
+# =====================================================
+# RELIABILITY & RETRY LOGIC
+# =====================================================
+# Retry decorator for functions
+retry==0.9.2
+
+# Advanced retry strategies
+tenacity==8.2.3
+
+# Rate limiting
+ratelimit==2.2.1
+
+# =====================================================
+# SECURITY & PERFORMANCE
+# =====================================================
+# SSL certificate verification
+certifi==2024.2.2
+
+# Cryptographic library
+cryptography>=42.0.0
+
+# =====================================================
+# DATABASE (SQLite is built-in, but these help with management)
+# =====================================================
+# No additional database dependencies needed for SQLite
+# SQLite3 is part of Python standard library
+
+# =====================================================
+# DEVELOPMENT & TESTING (Optional)
+# =====================================================
+# Uncomment for development
+# pytest==8.0.0
+# pytest-asyncio==0.23.5
+# black==24.2.0
+# flake8==7.0.0
+# mypy==1.8.0
+
+# =====================================================
+# NOTES
+# =====================================================
+# 
+# Installation Notes:
+# 1. After installing requirements, run: playwright install chromium
+# 2. Ensure Python 3.8+ is installed
+# 3. Use virtual environment: python3 -m venv venv
+# 4. Activate environment: source venv/bin/activate
+# 5. Install requirements: pip install -r requirements.txt
+#
+# API Dependencies:
+# - ZeroBounce API: For email verification (optional but recommended)
+# - Google Custom Search API: For Gmail/LinkedIn enrichment (optional)
+#
+# System Dependencies:
+# - Linux: sudo apt install python3-venv python3-pip
+# - macOS: brew install python@3.10
+# - Windows: Use WSL with Ubuntu
+#
+# =====================================================
+
+
