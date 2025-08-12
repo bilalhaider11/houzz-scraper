@@ -26,7 +26,7 @@ class DatabaseConfig:
 
 
 class DatabaseManager:
-    """Enhanced database manager using connection pool for better performance"""
+    """Fresh database manager with separate social media columns"""
     
     def __init__(self, config=None):
         self.config = config or DatabaseConfig()
@@ -47,120 +47,58 @@ class DatabaseManager:
         pass  # Pool handles initialization
 
     def create_table(self):
-        """Create the professionals table if it doesn't exist and add tracking columns if needed"""
+        """Create the professionals table with fresh schema including separate social media columns"""
         try:
             with self._get_connection() as conn:
-                # Check if table exists and if it has id column
-                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professionals'")
-                table_exists = cursor.fetchone() is not None
+                # Drop existing table to ensure fresh implementation
+                conn.execute("DROP TABLE IF EXISTS professionals")
                 
-                if not table_exists:
-                    # Create new table with ID as primary key
-                    conn.execute("""
-                        CREATE TABLE professionals (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            profile_url TEXT UNIQUE NOT NULL,  -- Generic URL field
-                            platform TEXT NOT NULL DEFAULT 'houzz',     -- Platform identifier
-                            name TEXT,
-                            website TEXT,
-                            professional_type TEXT,
-                            phone TEXT,
-                            emails TEXT,  -- Store as JSON: {"business": [...], "personal": [...]}
-                            address TEXT,
-                            zip_code TEXT,
-                            rating REAL,
-                            reviews_count INTEGER,
-                            social_links TEXT,  -- Store as JSON string
-                            typical_job_cost TEXT,
-                            followers_count INTEGER,
-                            is_email_verified INTEGER DEFAULT 0,
-                            website_scraped INTEGER DEFAULT 0,
-                            google_search_done INTEGER DEFAULT 0,
-                            is_completed INTEGER DEFAULT 0,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                    logger.info("Created new professionals table with email verification columns")
-                else:
-                    # Migrate existing table to add ID column if needed
-                    self._migrate_table_structure(conn)
+                # Create new table with separate social media columns
+                conn.execute("""
+                    CREATE TABLE professionals (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        profile_url TEXT UNIQUE NOT NULL,
+                        platform TEXT NOT NULL DEFAULT 'houzz',
+                        name TEXT,
+                        website TEXT,
+                        professional_type TEXT,
+                        phone TEXT,
+                        emails TEXT,  -- Store as JSON: {"business": [...], "personal": [...]}
+                        address TEXT,
+                        zip_code TEXT,
+                        rating REAL,
+                        reviews_count INTEGER,
+                        -- Separate social media link columns - each stores JSON array of links
+                        linkedin_links TEXT DEFAULT '[]',  -- JSON array of LinkedIn URLs
+                        facebook_links TEXT DEFAULT '[]',  -- JSON array of Facebook URLs
+                        instagram_links TEXT DEFAULT '[]',  -- JSON array of Instagram URLs
+                        twitter_links TEXT DEFAULT '[]',  -- JSON array of Twitter/X URLs
+                        pinterest_links TEXT DEFAULT '[]',  -- JSON array of Pinterest URLs
+                        youtube_links TEXT DEFAULT '[]',  -- JSON array of YouTube URLs
+                        other_social_links TEXT DEFAULT '[]',  -- JSON array of other social URLs
+                        typical_job_cost TEXT,
+                        followers_count INTEGER,
+                        is_email_verified INTEGER DEFAULT 0,
+                        website_scraped INTEGER DEFAULT 0,
+                        google_search_done INTEGER DEFAULT 0,
+                        is_completed INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 
-            logger.info(f"Database table 'professionals' is ready")
+                # Create indexes for better performance
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_profile_url ON professionals(profile_url)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_platform ON professionals(platform)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_website_scraped ON professionals(website_scraped)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_google_search_done ON professionals(google_search_done)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_is_completed ON professionals(is_completed)")
+                
+                logger.info("Created fresh professionals table with separate social media columns")
+                
         except sqlite3.Error as e:
             logger.error(f"Database error while creating table: {e}")
     
-    def _migrate_table_structure(self, conn):
-        """Migrate existing table to have ID column and update to new schema with profile_url and platform"""
-        try:
-            # Check if the table already has the new schema
-            cursor = conn.execute("PRAGMA table_info(professionals)")
-            columns = [column[1] for column in cursor.fetchall()]
-            
-            # Check if migration is needed
-            has_profile_url = 'profile_url' in columns
-            has_platform = 'platform' in columns
-            has_houzz_url = 'houzz_url' in columns
-            
-            if has_profile_url and has_platform:
-                logger.info("Database schema is already up to date.")
-                return
-            
-            # Create a new table with the updated schema
-            conn.execute("""
-                CREATE TABLE professionals_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    profile_url TEXT UNIQUE NOT NULL,  -- Generic URL field
-                    platform TEXT NOT NULL DEFAULT 'houzz',     -- Platform identifier
-                    name TEXT,
-                    website TEXT,
-                    professional_type TEXT,
-                    phone TEXT,
-                    emails TEXT,  -- Store as JSON: {"business": [...], "personal": [...]}
-                    address TEXT,
-                    zip_code TEXT,
-                    rating REAL,
-                    reviews_count INTEGER,
-                    social_links TEXT,  -- Store as JSON string
-                    typical_job_cost TEXT,
-                    followers_count INTEGER,
-                    is_email_verified INTEGER DEFAULT 0,
-                    website_scraped INTEGER DEFAULT 0,
-                    google_search_done INTEGER DEFAULT 0,
-                    is_completed INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Migrate data to the new table
-            if has_houzz_url:
-                # Migrate from old schema with houzz_url
-                conn.execute("""
-                    INSERT INTO professionals_new (
-                        profile_url, platform, name, website, professional_type, phone, emails, 
-                        address, zip_code, rating, reviews_count, social_links, 
-                        typical_job_cost, followers_count, is_email_verified, website_scraped, 
-                        google_search_done, is_completed, created_at, updated_at
-                    )
-                    SELECT 
-                        houzz_url, 'houzz', name, website, professional_type, phone, emails, 
-                        address, zip_code, rating, reviews_count, social_links, 
-                        typical_job_cost, followers_count, is_email_verified, website_scraped, 
-                        google_search_done, COALESCE(is_completed, 0), created_at, updated_at
-                    FROM professionals
-                """)
-            else:
-                # For completely new installations
-                logger.info("Creating fresh database with new schema")
-            
-            # Remove the old table and rename the new table
-            conn.execute("DROP TABLE professionals")
-            conn.execute("ALTER TABLE professionals_new RENAME TO professionals")
-            logger.info("Successfully migrated database table structure to new schema.")
-        except sqlite3.Error as e:
-            logger.error(f"Error migrating table structure: {e}")
-
     def add_profile(self, profile: ProfessionalProfile):
         """Add a single Professional Profile to the database"""
         logger.info(f"Preparing to add profile to database: {profile.name} ({profile.profile_url})")
@@ -181,9 +119,11 @@ class DatabaseManager:
                 conn.execute("""
                     INSERT OR REPLACE INTO professionals (
                         profile_url, platform, name, website, professional_type, phone, emails, 
-                        address, zip_code, rating, reviews_count, social_links, 
+                        address, zip_code, rating, reviews_count, 
+                        linkedin_links, facebook_links, instagram_links, twitter_links, 
+                        pinterest_links, youtube_links, other_social_links,
                         typical_job_cost, followers_count, is_email_verified
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     profile.profile_url,
                     profile.platform or 'houzz',
@@ -196,7 +136,13 @@ class DatabaseManager:
                     profile.zip_code,
                     profile.rating,
                     profile.reviews_count,
-                    json.dumps(profile.social_links),  # Serialize dict to JSON string
+                    json.dumps(profile.linkedin_links),
+                    json.dumps(profile.facebook_links),
+                    json.dumps(profile.instagram_links),
+                    json.dumps(profile.twitter_links),
+                    json.dumps(profile.pinterest_links),
+                    json.dumps(profile.youtube_links),
+                    json.dumps(profile.other_social_links),
                     profile.typical_job_cost,
                     profile.followers_count,
                     is_email_verified_value
@@ -247,14 +193,20 @@ class DatabaseManager:
         try:
             with self._get_connection() as conn:
                 # Handle special cases for complex fields
-                if field_name == 'social_links' and isinstance(value, dict):
-                    # Get current social links and merge with new value
-                    cursor = conn.execute("SELECT social_links FROM professionals WHERE id = ?", (profile_id,))
+                if field_name.endswith('_links') and isinstance(value, list):
+                    # For social media links, merge with existing links and remove duplicates
+                    cursor = conn.execute(f"SELECT {field_name} FROM professionals WHERE id = ?", (profile_id,))
                     row = cursor.fetchone()
                     if row:
-                        current_social = json.loads(row[0]) if row[0] else {}
-                        current_social.update(value)
-                        value = json.dumps(current_social)
+                        current_links = json.loads(row[0]) if row[0] else []
+                        # Add new links and remove duplicates while preserving order
+                        seen = set()
+                        merged_links = []
+                        for link in current_links + value:
+                            if link not in seen:
+                                seen.add(link)
+                                merged_links.append(link)
+                        value = json.dumps(merged_links)
                     else:
                         value = json.dumps(value)
                 elif field_name == 'emails' and isinstance(value, dict):
@@ -290,9 +242,69 @@ class DatabaseManager:
         """Mark a profile's Google search as done by ID"""
         self.update_profile_field(profile_id, 'google_search_done', 1)
     
-    def update_profile_linkedin(self, profile_id: int, linkedin_url: str):
-        """Update profile LinkedIn URL by ID"""
-        self.update_profile_field(profile_id, 'social_links', {'linkedin': linkedin_url})
+    def update_social_links(self, profile_id: int, social_links: dict):
+        """Update social media links for a profile - handles merging and deduplication"""
+        try:
+            with self._get_connection() as conn:
+                # Get current social links
+                cursor = conn.execute("""
+                    SELECT linkedin_links, facebook_links, instagram_links, twitter_links, 
+                           pinterest_links, youtube_links, other_social_links
+                    FROM professionals WHERE id = ?
+                """, (profile_id,))
+                row = cursor.fetchone()
+                
+                if row:
+                    # Parse current links
+                    current_links = {
+                        'linkedin_links': json.loads(row[0]) if row[0] else [],
+                        'facebook_links': json.loads(row[1]) if row[1] else [],
+                        'instagram_links': json.loads(row[2]) if row[2] else [],
+                        'twitter_links': json.loads(row[3]) if row[3] else [],
+                        'pinterest_links': json.loads(row[4]) if row[4] else [],
+                        'youtube_links': json.loads(row[5]) if row[5] else [],
+                        'other_social_links': json.loads(row[6]) if row[6] else []
+                    }
+                    
+                    # Merge new links with existing ones, removing duplicates
+                    for platform, new_links in social_links.items():
+                        if isinstance(new_links, list):
+                            field_name = f"{platform}_links"
+                            if field_name in current_links:
+                                # Merge and deduplicate
+                                seen = set()
+                                merged_links = []
+                                for link in current_links[field_name] + new_links:
+                                    if link not in seen:
+                                        seen.add(link)
+                                        merged_links.append(link)
+                                current_links[field_name] = merged_links
+                    
+                    # Update database with merged links
+                    conn.execute("""
+                        UPDATE professionals SET 
+                            linkedin_links = ?, facebook_links = ?, instagram_links = ?, 
+                            twitter_links = ?, pinterest_links = ?, youtube_links = ?, 
+                            other_social_links = ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (
+                        json.dumps(current_links['linkedin_links']),
+                        json.dumps(current_links['facebook_links']),
+                        json.dumps(current_links['instagram_links']),
+                        json.dumps(current_links['twitter_links']),
+                        json.dumps(current_links['pinterest_links']),
+                        json.dumps(current_links['youtube_links']),
+                        json.dumps(current_links['other_social_links']),
+                        profile_id
+                    ))
+                    conn.commit()
+                    logger.info(f"Updated social links for profile ID {profile_id}")
+                else:
+                    logger.warning(f"Profile ID {profile_id} not found for social links update")
+                    
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update social links for profile ID {profile_id}: {e}")
     
     def update_profile_zipcode(self, profile_id: int, zipcode: str):
         """Update zipcode for a profile"""
@@ -303,7 +315,11 @@ class DatabaseManager:
         try:
             with self._get_connection() as conn:
                 cursor = conn.execute("""
-                    SELECT id, name, professional_type, emails, website, social_links, zip_code, address FROM professionals 
+                    SELECT id, name, professional_type, emails, website, 
+                           linkedin_links, facebook_links, instagram_links, twitter_links,
+                           pinterest_links, youtube_links, other_social_links,
+                           zip_code, address 
+                    FROM professionals 
                     WHERE (google_search_done IS NULL OR google_search_done = 0)
                     AND platform = ?
                     ORDER BY id
@@ -321,7 +337,9 @@ class DatabaseManager:
                 cursor = conn.execute("""
                     SELECT 
                         id, profile_url, platform, name, website, professional_type, phone, emails, 
-                        address, zip_code, rating, reviews_count, social_links, 
+                        address, zip_code, rating, reviews_count, 
+                        linkedin_links, facebook_links, instagram_links, twitter_links,
+                        pinterest_links, youtube_links, other_social_links,
                         typical_job_cost, followers_count, is_email_verified, website_scraped, 
                         google_search_done, created_at, updated_at
                     FROM professionals 
@@ -334,22 +352,6 @@ class DatabaseManager:
                 profiles = []
                 
                 for row in rows:
-                    # Parse social_links JSON
-                    social_links = {}
-                    if row[12]:  # social_links column
-                        try:
-                            social_links = json.loads(row[12])
-                        except (json.JSONDecodeError, TypeError):
-                            social_links = {}
-                    
-                    # Parse emails JSON
-                    emails_data = {}
-                    if row[7]:  # emails column
-                        try:
-                            emails_data = json.loads(row[7]) if isinstance(row[7], str) else row[7]
-                        except (json.JSONDecodeError, TypeError):
-                            emails_data = {}
-                    
                     profile = {
                         'id': row[0],
                         'profile_url': row[1],
@@ -363,14 +365,20 @@ class DatabaseManager:
                         'zip_code': row[9],
                         'rating': row[10],
                         'reviews_count': row[11],
-                        'social_links': row[12],  # Keep as JSON string for CSV export
-                        'typical_job_cost': row[13],
-                        'followers_count': row[14],
-                        'is_email_verified': row[15],
-                        'website_scraped': row[16],
-                        'google_search_done': row[17],
-                        'created_at': row[18],
-                        'updated_at': row[19]
+                        'linkedin_links': row[12],  # Keep as JSON string for CSV export
+                        'facebook_links': row[13],
+                        'instagram_links': row[14],
+                        'twitter_links': row[15],
+                        'pinterest_links': row[16],
+                        'youtube_links': row[17],
+                        'other_social_links': row[18],
+                        'typical_job_cost': row[19],
+                        'followers_count': row[20],
+                        'is_email_verified': row[21],
+                        'website_scraped': row[22],
+                        'google_search_done': row[23],
+                        'created_at': row[24],
+                        'updated_at': row[25]
                     }
                     profiles.append(profile)
                 

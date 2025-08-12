@@ -94,7 +94,14 @@ class DatabaseConnectionPool:
                         zip_code TEXT,
                         rating REAL,
                         reviews_count INTEGER,
-                        social_links TEXT,
+                        -- Separate social media link columns - each stores JSON array of links
+                        linkedin_links TEXT DEFAULT '[]',  -- JSON array of LinkedIn URLs
+                        facebook_links TEXT DEFAULT '[]',  -- JSON array of Facebook URLs
+                        instagram_links TEXT DEFAULT '[]',  -- JSON array of Instagram URLs
+                        twitter_links TEXT DEFAULT '[]',  -- JSON array of Twitter/X URLs
+                        pinterest_links TEXT DEFAULT '[]',  -- JSON array of Pinterest URLs
+                        youtube_links TEXT DEFAULT '[]',  -- JSON array of YouTube URLs
+                        other_social_links TEXT DEFAULT '[]',  -- JSON array of other social URLs
                         typical_job_cost TEXT,
                         followers_count INTEGER,
                         is_email_verified INTEGER DEFAULT 0,
@@ -105,7 +112,15 @@ class DatabaseConnectionPool:
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-                logger.info("Created professionals table")
+                
+                # Create indexes for better performance
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_profile_url ON professionals(profile_url)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_platform ON professionals(platform)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_website_scraped ON professionals(website_scraped)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_google_search_done ON professionals(google_search_done)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_is_completed ON professionals(is_completed)")
+                
+                logger.info("Created professionals table with separate social media columns")
             else:
                 logger.info("Professionals table already exists")
                 

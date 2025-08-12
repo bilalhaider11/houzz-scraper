@@ -40,7 +40,14 @@ class ProfessionalProfile:
     zip_code: Optional[str] = None
     rating: Optional[float] = None
     reviews_count: Optional[int] = None
-    social_links: Dict[str, str] = field(default_factory=dict)
+    # Separate social media link fields - each can store a list of links
+    linkedin_links: List[str] = field(default_factory=list)
+    facebook_links: List[str] = field(default_factory=list)
+    instagram_links: List[str] = field(default_factory=list)
+    twitter_links: List[str] = field(default_factory=list)
+    pinterest_links: List[str] = field(default_factory=list)
+    youtube_links: List[str] = field(default_factory=list)
+    other_social_links: List[str] = field(default_factory=list)
     typical_job_cost: Optional[str] = None
     followers_count: Optional[int] = None
     is_email_verified: int = 0

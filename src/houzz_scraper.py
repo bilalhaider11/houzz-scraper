@@ -839,17 +839,32 @@ class HouzzScraper(BaseScraper):
                                 continue
 
                             if "linkedin" in aria or "linkedin.com" in cleaned_url:
-                                profile.social_links["LinkedIn"] = cleaned_url
+                                if cleaned_url not in profile.linkedin_links:
+                                    profile.linkedin_links.append(cleaned_url)
                             elif "facebook" in aria or "facebook.com" in cleaned_url:
-                                profile.social_links["Facebook"] = cleaned_url
+                                if cleaned_url not in profile.facebook_links:
+                                    profile.facebook_links.append(cleaned_url)
                             elif "instagram" in aria or "instagram.com" in cleaned_url:
-                                profile.social_links["Instagram"] = cleaned_url
+                                if cleaned_url not in profile.instagram_links:
+                                    profile.instagram_links.append(cleaned_url)
                             elif "twitter" in aria or "twitter.com" in cleaned_url or "x.com" in cleaned_url:
-                                profile.social_links["Twitter"] = cleaned_url
+                                if cleaned_url not in profile.twitter_links:
+                                    profile.twitter_links.append(cleaned_url)
                             elif "pinterest" in aria or "pinterest.com" in cleaned_url:
-                                profile.social_links["Pinterest"] = cleaned_url
+                                if cleaned_url not in profile.pinterest_links:
+                                    profile.pinterest_links.append(cleaned_url)
+                            elif "youtube" in aria or "youtube.com" in cleaned_url:
+                                if cleaned_url not in profile.youtube_links:
+                                    profile.youtube_links.append(cleaned_url)
+                            elif "behance" in aria or "behance.net" in cleaned_url:
+                                if cleaned_url not in profile.other_social_links:
+                                    profile.other_social_links.append(cleaned_url)
+                            elif "dribbble" in aria or "dribbble.com" in cleaned_url:
+                                if cleaned_url not in profile.other_social_links:
+                                    profile.other_social_links.append(cleaned_url)
                             elif "blog" in aria or "other" in aria:
-                                profile.social_links["Other"] = cleaned_url
+                                if cleaned_url not in profile.other_social_links:
+                                    profile.other_social_links.append(cleaned_url)
             else:
                 # Fallback to previous logic if section not found
                 name_selectors = [
@@ -901,18 +916,22 @@ class HouzzScraper(BaseScraper):
                     # Clean the URL to remove redirects and tracking parameters
                     cleaned_url = get_clean_target_url(url)
 
-                    if 'linkedin.com' in cleaned_url and 'LinkedIn' not in profile.social_links:
-                        profile.social_links['LinkedIn'] = cleaned_url
-                    elif 'facebook.com' in cleaned_url and 'Facebook' not in profile.social_links:
-                        profile.social_links['Facebook'] = cleaned_url
-                    elif 'instagram.com' in cleaned_url and 'Instagram' not in profile.social_links:
-                        profile.social_links['Instagram'] = cleaned_url
-                    elif ('twitter.com' in cleaned_url or 'x.com' in cleaned_url) and 'Twitter' not in profile.social_links:
-                        profile.social_links['Twitter'] = cleaned_url
-                    elif 'pinterest.com' in cleaned_url and 'Pinterest' not in profile.social_links:
-                        profile.social_links['Pinterest'] = cleaned_url
-                    elif 'youtube.com' in cleaned_url and 'YouTube' not in profile.social_links:
-                        profile.social_links['YouTube'] = cleaned_url
+                    if 'linkedin.com' in cleaned_url and cleaned_url not in profile.linkedin_links:
+                        profile.linkedin_links.append(cleaned_url)
+                    elif 'facebook.com' in cleaned_url and cleaned_url not in profile.facebook_links:
+                        profile.facebook_links.append(cleaned_url)
+                    elif 'instagram.com' in cleaned_url and cleaned_url not in profile.instagram_links:
+                        profile.instagram_links.append(cleaned_url)
+                    elif ('twitter.com' in cleaned_url or 'x.com' in cleaned_url) and cleaned_url not in profile.twitter_links:
+                        profile.twitter_links.append(cleaned_url)
+                    elif 'pinterest.com' in cleaned_url and cleaned_url not in profile.pinterest_links:
+                        profile.pinterest_links.append(cleaned_url)
+                    elif 'youtube.com' in cleaned_url and cleaned_url not in profile.youtube_links:
+                        profile.youtube_links.append(cleaned_url)
+                    elif 'behance.net' in cleaned_url and cleaned_url not in profile.other_social_links:
+                        profile.other_social_links.append(cleaned_url)
+                    elif 'dribbble.com' in cleaned_url and cleaned_url not in profile.other_social_links:
+                        profile.other_social_links.append(cleaned_url)
                     elif not profile.website and 'houzz.com' not in cleaned_url:
                         is_social = any(social in cleaned_url for social in ['facebook', 'instagram', 'twitter', 'linkedin', 'pinterest', 'youtube', 'x.com'])
                         if not is_social:

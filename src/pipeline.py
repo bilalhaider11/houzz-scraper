@@ -262,11 +262,12 @@ class LeadEnrichmentPipeline:
         phone_updated = False   # Track if we actually updated the phone
         
         try:
-            # Extract emails and phones using Playwright extractor
+            # Extract emails, phones, and social links using Playwright extractor
             extraction_result = await email_extractor.extract_emails_from_website_async(website, platform, existing_phone)
             personal_emails = extraction_result.get('personal', [])
             business_emails = extraction_result.get('business', [])
             extracted_phone = extraction_result.get('phone', None)
+            extracted_social_links = extraction_result.get('social_links', {})
 
             # Update phone if found and platform is Architizer and no existing phone
             if extracted_phone and platform == "architizer" and not existing_phone:
@@ -278,6 +279,16 @@ class LeadEnrichmentPipeline:
                     except Exception as e:
                         logger.error(f"Failed to update phone for {name}: {e}")
                         phone_updated = False
+
+            # Update social links if found
+            if extracted_social_links and any(extracted_social_links.values()):
+                async with db_semaphore:
+                    try:
+                        db_manager.update_social_links(profile_id, extracted_social_links)
+                        total_social_links = sum(len(links) for links in extracted_social_links.values())
+                        logger.info(f"🔗 Updated {name} with {total_social_links} social links: {extracted_social_links}")
+                    except Exception as e:
+                        logger.error(f"Failed to update social links for {name}: {e}")
 
             if personal_emails or business_emails:
                 best_personal_email = personal_emails[0] if personal_emails else None
@@ -404,17 +415,27 @@ class LeadEnrichmentPipeline:
                 cache_stats = google_searcher.get_cache_stats()
                 logger.info(f"Google API status: {cache_stats['request_count']}/{google_searcher.max_requests_per_day} requests used, quota exceeded: {cache_stats['quota_exceeded']}")
                 
-                for profile_id, name, professional_type, existing_email, website, social_links_json, zipcode, address in profiles_to_search:
+                for profile_id, name, professional_type, existing_email, website, linkedin_links_json, facebook_links_json, instagram_links_json, twitter_links_json, pinterest_links_json, youtube_links_json, other_social_links_json, zipcode, address in profiles_to_search:
                     total_processed += 1
                     
-                    # Parse social_links JSON
+                    # Parse social links from separate columns
                     social_links = {}
-                    if social_links_json:
-                        try:
-                            social_links = json.loads(social_links_json) if isinstance(social_links_json, str) else social_links_json
-                        except (json.JSONDecodeError, TypeError):
-                            logger.debug(f"Could not parse social_links for {name}: {social_links_json}")
-                            social_links = {}
+                    for platform, links_json in [
+                        ('linkedin', linkedin_links_json),
+                        ('facebook', facebook_links_json),
+                        ('instagram', instagram_links_json),
+                        ('twitter', twitter_links_json),
+                        ('pinterest', pinterest_links_json),
+                        ('youtube', youtube_links_json),
+                        ('other', other_social_links_json)
+                    ]:
+                        if links_json:
+                            try:
+                                links = json.loads(links_json) if isinstance(links_json, str) else links_json
+                                if links:
+                                    social_links[platform] = links
+                            except (json.JSONDecodeError, TypeError):
+                                logger.debug(f"Could not parse {platform} links for {name}: {links_json}")
                     
                     # Parse existing emails JSON
                     existing_emails_data = {'personal': [], 'business': []}
@@ -461,7 +482,7 @@ class LeadEnrichmentPipeline:
                         
                         if linkedin_profiles:
                             best_linkedin = linkedin_profiles[0]['url']  # Take the first LinkedIn profile
-                            db_manager.update_profile_linkedin(profile_id, best_linkedin)
+                            db_manager.update_profile_field(profile_id, 'linkedin_links', [best_linkedin])
                             logger.info(f"✓ Updated {name} with LinkedIn: {best_linkedin}")
                             total_with_linkedin += 1
                             updates_made = True
@@ -539,11 +560,13 @@ class LeadEnrichmentPipeline:
 
             # Reorder columns for specific platform exports
             if platform == "architizer":
-                # Define the exact column order for Architizer export
+                # Define the exact column order for Architizer export with new social media columns
                 architizer_columns = [
                     'profile_url', 'name', 'website', 'emails', 'phone', 'address', 
-                    'professional_type', 'social_links', 'is_email_verified', 'zip_code', 
-                    'website_scraped', 'google_search_done', 'created_at', 'updated_at'
+                    'professional_type', 'linkedin_links', 'facebook_links', 'instagram_links', 
+                    'twitter_links', 'pinterest_links', 'youtube_links', 'other_social_links',
+                    'is_email_verified', 'zip_code', 'website_scraped', 'google_search_done', 
+                    'created_at', 'updated_at'
                 ]
                 
                 # Filter DataFrame to only include the requested columns in the specified order
@@ -551,6 +574,17 @@ class LeadEnrichmentPipeline:
                 df = df[available_columns]
                 
                 logger.info(f"Exported Architizer data with {len(available_columns)} columns: {available_columns}")
+            else:
+                # For other platforms (like Houzz), ensure social media columns are included
+                social_columns = ['linkedin_links', 'facebook_links', 'instagram_links', 
+                                 'twitter_links', 'pinterest_links', 'youtube_links', 'other_social_links']
+                
+                # Check if social columns exist in the DataFrame
+                existing_social_columns = [col for col in social_columns if col in df.columns]
+                if existing_social_columns:
+                    logger.info(f"Exporting {platform} data with social media columns: {existing_social_columns}")
+                else:
+                    logger.warning(f"No social media columns found in {platform} export data")
 
             # Export DataFrame to CSV
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

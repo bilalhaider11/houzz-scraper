@@ -61,15 +61,24 @@ class PersonalEmailExtractor:
             await self.playwright.stop()
     
     async def extract_emails_from_website_async(self, website_url: str, platform: str = "houzz", existing_phone: Optional[str] = None) -> Dict[str, any]:
-        """Extract emails from a website and classify into personal and business (async version)"""
-        logger.info(f"Extracting emails from: {website_url}")
+        """Extract emails and social links from a website and classify into personal and business (async version)"""
+        logger.info(f"Extracting emails and social links from: {website_url}")
         
         if not website_url or not website_url.startswith(('http://', 'https://')):
             logger.warning(f"Invalid website URL: {website_url}")
-            return {"personal": [], "business": [], "phone": None}
+            return {"personal": [], "business": [], "phone": None, "social_links": {}}
         
         all_emails = set()
         all_phones = set()
+        all_social_links = {
+            'linkedin': [],
+            'facebook': [],
+            'instagram': [],
+            'twitter': [],
+            'pinterest': [],
+            'youtube': [],
+            'other': []
+        }
         pages_to_check = [website_url]
 
         # Add contact pages
@@ -89,11 +98,11 @@ class PersonalEmailExtractor:
         if len(pages_to_check) <= max_concurrent_per_phase:
             # Single phase - process all pages at once
             logger.info(f"🔄 Processing all {len(pages_to_check)} pages in single phase")
-            all_emails, all_phones, pages_scraped = await self._process_pages_single_phase(pages_to_check, max_concurrent_per_phase, platform, existing_phone)
+            all_emails, all_phones, pages_scraped, all_social_links = await self._process_pages_single_phase(pages_to_check, max_concurrent_per_phase, platform, existing_phone)
         else:
             # Two-phase approach for large numbers of pages
             logger.info(f"🔄 Processing {len(pages_to_check)} pages in two phases (max {max_concurrent_per_phase} per phase)")
-            all_emails, all_phones, pages_scraped = await self._process_pages_two_phases(pages_to_check, max_concurrent_per_phase, platform, existing_phone)
+            all_emails, all_phones, pages_scraped, all_social_links = await self._process_pages_two_phases(pages_to_check, max_concurrent_per_phase, platform, existing_phone)
 
         # Log scraped emails before validation
         if all_emails:
@@ -136,12 +145,22 @@ class PersonalEmailExtractor:
         
         result = classified_emails
         result["phone"] = validated_phone
+        result["social_links"] = all_social_links
         return result
 
-    async def _process_pages_single_phase(self, pages_to_check: List[str], max_concurrent: int, platform: str, existing_phone: Optional[str]) -> Tuple[Set[str], Set[str], int]:
+    async def _process_pages_single_phase(self, pages_to_check: List[str], max_concurrent: int, platform: str, existing_phone: Optional[str]) -> Tuple[Set[str], Set[str], int, Dict[str, List[str]]]:
         """Process all pages in a single phase"""
         all_emails = set()
         all_phones = set()
+        all_social_links = {
+            'linkedin': [],
+            'facebook': [],
+            'instagram': [],
+            'twitter': [],
+            'pinterest': [],
+            'youtube': [],
+            'other': []
+        }
         pages_scraped = 0
         
         # Process pages concurrently with rate limiting
@@ -160,17 +179,28 @@ class PersonalEmailExtractor:
                 logger.warning(f"Failed to extract from {pages_to_check[i]}: {result}")
                 continue
             elif result:
-                emails, phones = result
+                emails, phones, social_links = result
                 all_emails.update(emails)
                 all_phones.update(phones)
+                for platform_key, links in social_links.items():
+                    all_social_links[platform_key].extend(links)
                 pages_scraped += 1
         
-        return all_emails, all_phones, pages_scraped
+        return all_emails, all_phones, pages_scraped, all_social_links
 
-    async def _process_pages_two_phases(self, pages_to_check: List[str], max_concurrent_per_phase: int, platform: str, existing_phone: Optional[str]) -> Tuple[Set[str], Set[str], int]:
+    async def _process_pages_two_phases(self, pages_to_check: List[str], max_concurrent_per_phase: int, platform: str, existing_phone: Optional[str]) -> Tuple[Set[str], Set[str], int, Dict[str, List[str]]]:
         """Process pages in two phases to handle large numbers of pages"""
         all_emails = set()
         all_phones = set()
+        all_social_links = {
+            'linkedin': [],
+            'facebook': [],
+            'instagram': [],
+            'twitter': [],
+            'pinterest': [],
+            'youtube': [],
+            'other': []
+        }
         total_pages_scraped = 0
         
         # Split pages into two phases
@@ -182,10 +212,13 @@ class PersonalEmailExtractor:
         
         # Phase 1
         logger.info("🔄 Starting Phase 1...")
-        phase1_emails, phase1_phones, phase1_scraped = await self._process_pages_single_phase(phase1_pages, max_concurrent_per_phase, platform, existing_phone)
+        phase1_emails, phase1_phones, phase1_scraped, phase1_social_links = await self._process_pages_single_phase(phase1_pages, max_concurrent_per_phase, platform, existing_phone)
         all_emails.update(phase1_emails)
         all_phones.update(phase1_phones)
         total_pages_scraped += phase1_scraped
+        # Merge social links from phase 1
+        for platform_key, links in phase1_social_links.items():
+            all_social_links[platform_key].extend(links)
         logger.info(f"✅ Phase 1 complete: {phase1_scraped} pages scraped, {len(phase1_emails)} emails found, {len(phase1_phones)} phones found")
         
         # Small delay between phases
@@ -193,21 +226,37 @@ class PersonalEmailExtractor:
         
         # Phase 2
         logger.info("🔄 Starting Phase 2...")
-        phase2_emails, phase2_phones, phase2_scraped = await self._process_pages_single_phase(phase2_pages, max_concurrent_per_phase, platform, existing_phone)
+        phase2_emails, phase2_phones, phase2_scraped, phase2_social_links = await self._process_pages_single_phase(phase2_pages, max_concurrent_per_phase, platform, existing_phone)
         all_emails.update(phase2_emails)
         all_phones.update(phase2_phones)
         total_pages_scraped += phase2_scraped
+        # Merge social links from phase 2
+        for platform_key, links in phase2_social_links.items():
+            all_social_links[platform_key].extend(links)
         logger.info(f"✅ Phase 2 complete: {phase2_scraped} pages scraped, {len(phase2_emails)} emails found, {len(phase2_phones)} phones found")
         
-        logger.info(f"🎯 Total: {total_pages_scraped} pages scraped, {len(all_emails)} unique emails found, {len(all_phones)} unique phones found")
+        # Remove duplicates from social links
+        for platform_key in all_social_links:
+            all_social_links[platform_key] = list(set(all_social_links[platform_key]))
         
-        return all_emails, all_phones, total_pages_scraped
+        logger.info(f"🎯 Total: {total_pages_scraped} pages scraped, {len(all_emails)} unique emails found, {len(all_phones)} unique phones found, {sum(len(links) for links in all_social_links.values())} social links found")
+        
+        return all_emails, all_phones, total_pages_scraped, all_social_links
 
-    async def _extract_emails_and_phones_from_page_async(self, url: str, platform: str, existing_phone: Optional[str], max_retries: int = 3) -> Tuple[Set[str], Set[str]]:
-        """Extract emails and phones from a single page using Playwright with robust retry logic"""
+    async def _extract_emails_and_phones_from_page_async(self, url: str, platform: str, existing_phone: Optional[str], max_retries: int = 3) -> Tuple[Set[str], Set[str], Dict[str, List[str]]]:
+        """Extract emails, phones, and social links from a single page using Playwright with robust retry logic"""
         async with self.semaphore:  # Rate limiting
             emails = set()
             phones = set()
+            social_links = {
+                'linkedin': [],
+                'facebook': [],
+                'instagram': [],
+                'twitter': [],
+                'pinterest': [],
+                'youtube': [],
+                'other': []
+            }
             last_exception = None
             
             for attempt in range(max_retries):
@@ -281,6 +330,13 @@ class PersonalEmailExtractor:
                     # Extract phones from parsed HTML if platform is Architizer and no existing phone
                     if platform == "architizer" and not existing_phone:
                         phones.update(self._soup_extract_phones(soup))
+                    
+                    # Extract social links from the page
+                    page_social_links = self._extract_social_links(soup, url)
+                    for platform_key, links in page_social_links.items():
+                        for link in links:
+                            if link not in social_links[platform_key]:
+                                social_links[platform_key].append(link)
                     
                     # Success! Log and break retry loop
                     if attempt > 0:
@@ -380,13 +436,13 @@ class PersonalEmailExtractor:
                         except:
                             pass
             
-            # Small delay to be respectful to servers (adaptive based on success/failure)
-            if emails or phones:  # Success
-                await asyncio.sleep(random.uniform(0.5, 1.0))
-            else:  # Failed
-                await asyncio.sleep(random.uniform(1.0, 2.0))
-                
-            return emails, phones
+            # Log final result
+            if emails or phones or any(social_links.values()):
+                logger.debug(f"📧 Found {len(emails)} emails, {len(phones)} phones, {sum(len(links) for links in social_links.values())} social links on {url}")
+            else:
+                logger.debug(f"📭 No emails, phones, or social links found on {url}")
+            
+            return emails, phones, social_links
     
     def _regex_extract_emails(self, html_content: str) -> Set[str]:
         """Extract emails using regex patterns"""
@@ -505,6 +561,51 @@ class PersonalEmailExtractor:
         if not is_valid:
             logger.debug(f"🚫 Basic validation failed for {email}: {result.sub_status}")
         return is_valid
+    
+    def _extract_social_links(self, soup: BeautifulSoup, page_url: str) -> Dict[str, List[str]]:
+        """Extract social media links from website"""
+        social_links = {
+            'linkedin': [],
+            'facebook': [],
+            'instagram': [],
+            'twitter': [],
+            'pinterest': [],
+            'youtube': [],
+            'other': []
+        }
+        
+        # Find all links on the page
+        all_links = soup.find_all('a', href=True)
+        
+        for link in all_links:
+            href = link.get('href', '').lower()
+            
+            # Skip internal links and non-social links
+            if not href.startswith(('http://', 'https://')):
+                continue
+            
+            # Clean the URL
+            if '?utm_source=' in href:
+                href = href.split('?utm_source=')[0]
+            
+            # Categorize social links
+            if 'linkedin.com' in href and href not in social_links['linkedin']:
+                social_links['linkedin'].append(link.get('href'))
+            elif ('twitter.com' in href or 'x.com' in href) and href not in social_links['twitter']:
+                social_links['twitter'].append(link.get('href'))
+            elif 'facebook.com' in href and href not in social_links['facebook']:
+                social_links['facebook'].append(link.get('href'))
+            elif 'instagram.com' in href and href not in social_links['instagram']:
+                social_links['instagram'].append(link.get('href'))
+            elif 'pinterest.com' in href and href not in social_links['pinterest']:
+                social_links['pinterest'].append(link.get('href'))
+            elif ('youtube.com' in href or 'youtu.be' in href) and href not in social_links['youtube']:
+                social_links['youtube'].append(link.get('href'))
+            elif any(social in href for social in ['behance.net', 'dribbble.com', 'tiktok.com', 'snapchat.com', 'tumblr.com', 'reddit.com', 'medium.com', 'github.com']):
+                if href not in social_links['other']:
+                    social_links['other'].append(link.get('href'))
+        
+        return social_links
     
     
 

@@ -252,7 +252,7 @@ class ArchitizerScraper(BaseScraper):
                     if profile:
                         # Save to database
                         if self.database_manager:
-                            await self.database_manager.add_profile(profile)
+                            self.database_manager.add_profile(profile)
                             scraped_count += 1
                             logger.info(f"✅ Scraped and saved new firm: {profile.name}")
                         else:
@@ -802,8 +802,11 @@ class ArchitizerScraper(BaseScraper):
             soup = BeautifulSoup(content, 'html.parser')
             
             # Extract firm information
-            firm_data = await self._extract_firm_data_from_page(soup, firm_url)
+            firm_data = self._extract_firm_data_from_page(soup, firm_url)
             if firm_data:
+                # Convert social_links dict to separate fields
+                social_links = firm_data.get('social_links', {})
+                
                 return ProfessionalProfile(
                     profile_url=firm_url,
                     platform='architizer',
@@ -816,7 +819,13 @@ class ArchitizerScraper(BaseScraper):
                     professional_type=firm_data.get('professional_type'),
                     rating=firm_data.get('rating'),
                     reviews_count=firm_data.get('reviews_count'),
-                    social_links=firm_data.get('social_links', {}),
+                    linkedin_links=social_links.get('linkedin', []),
+                    facebook_links=social_links.get('facebook', []),
+                    instagram_links=social_links.get('instagram', []),
+                    twitter_links=social_links.get('twitter', []),
+                    pinterest_links=social_links.get('pinterest', []),
+                    youtube_links=social_links.get('youtube', []),
+                    other_social_links=social_links.get('other', []),
                     typical_job_cost=firm_data.get('typical_job_cost'),
                     followers_count=firm_data.get('followers_count')
                 )
@@ -827,7 +836,7 @@ class ArchitizerScraper(BaseScraper):
             logger.error(f"Error scraping individual firm profile {firm_url}: {e}")
             return None
 
-    async def _extract_firm_data_from_page(self, soup: BeautifulSoup, firm_url: str) -> Dict[str, Any]:
+    def _extract_firm_data_from_page(self, soup: BeautifulSoup, firm_url: str) -> Dict[str, Any]:
         """Extract firm data from individual firm page using BeautifulSoup."""
         firm_data = {}
         
@@ -981,7 +990,15 @@ class ArchitizerScraper(BaseScraper):
                             logger.debug("No valid zipcode found in fallback address")
             
             # Extract social links from the specific structure
-            social_links = {}
+            social_links = {
+                'linkedin': [],
+                'facebook': [],
+                'instagram': [],
+                'twitter': [],
+                'pinterest': [],
+                'youtube': [],
+                'other': []
+            }
             social_elems = soup.select('[id*="-social_links"] a[href*="http"]')
             
             for social_elem in social_elems:
@@ -990,50 +1007,54 @@ class ArchitizerScraper(BaseScraper):
                 if '?utm_source=' in href:
                     href = href.split('?utm_source=')[0]
                 
-                # Determine social platform from URL
-                if 'linkedin.com' in href:
-                    social_links['linkedin'] = href
-                elif 'twitter.com' in href or 'x.com' in href:
-                    social_links['twitter'] = href
-                elif 'facebook.com' in href:
-                    social_links['facebook'] = href
-                elif 'instagram.com' in href:
-                    social_links['instagram'] = href
-                elif 'pinterest.com' in href:
-                    social_links['pinterest'] = href
-                elif 'youtube.com' in href or 'youtu.be' in href:
-                    social_links['youtube'] = href
-                elif 'behance.net' in href:
-                    social_links['behance'] = href
-                elif 'dribbble.com' in href:
-                    social_links['dribbble'] = href
-            
+                # Determine social platform from URL and add to appropriate list
+                if 'linkedin.com' in href and href not in social_links['linkedin']:
+                    social_links['linkedin'].append(href)
+                elif ('twitter.com' in href or 'x.com' in href) and href not in social_links['twitter']:
+                    social_links['twitter'].append(href)
+                elif 'facebook.com' in href and href not in social_links['facebook']:
+                    social_links['facebook'].append(href)
+                elif 'instagram.com' in href and href not in social_links['instagram']:
+                    social_links['instagram'].append(href)
+                elif 'pinterest.com' in href and href not in social_links['pinterest']:
+                    social_links['pinterest'].append(href)
+                elif ('youtube.com' in href or 'youtu.be' in href) and href not in social_links['youtube']:
+                    social_links['youtube'].append(href)
+                elif 'behance.net' in href and href not in social_links['other']:
+                    social_links['other'].append(href)
+                elif 'dribbble.com' in href and href not in social_links['other']:
+                    social_links['other'].append(href)
+                elif href not in social_links['other']:
+                    social_links['other'].append(href)
+                
             firm_data['social_links'] = social_links
             
             # Fallback: try to find social links in any element if none found in specific structure
-            if not social_links:
+            if not any(social_links.values()):
                 all_links = soup.find_all('a', href=True)
                 for link in all_links:
                     href = link.get('href', '').lower()
                     if '?utm_source=' in href:
                         href = href.split('?utm_source=')[0]
                     
-                    if 'linkedin.com' in href:
-                        social_links['linkedin'] = link.get('href')
-                    elif 'twitter.com' in href or 'x.com' in href:
-                        social_links['twitter'] = link.get('href')
-                    elif 'facebook.com' in href:
-                        social_links['facebook'] = link.get('href')
-                    elif 'instagram.com' in href:
-                        social_links['instagram'] = link.get('href')
-                    elif 'pinterest.com' in href:
-                        social_links['pinterest'] = link.get('href')
-                    elif 'youtube.com' in href or 'youtu.be' in href:
-                        social_links['youtube'] = link.get('href')
-                    elif 'behance.net' in href:
-                        social_links['behance'] = link.get('href')
-                    elif 'dribbble.com' in href:
-                        social_links['dribbble'] = link.get('href')
+                    if 'linkedin.com' in href and href not in social_links['linkedin']:
+                        social_links['linkedin'].append(link.get('href'))
+                    elif ('twitter.com' in href or 'x.com' in href) and href not in social_links['twitter']:
+                        social_links['twitter'].append(link.get('href'))
+                    elif 'facebook.com' in href and href not in social_links['facebook']:
+                        social_links['facebook'].append(link.get('href'))
+                    elif 'instagram.com' in href and href not in social_links['instagram']:
+                        social_links['instagram'].append(link.get('href'))
+                    elif 'pinterest.com' in href and href not in social_links['pinterest']:
+                        social_links['pinterest'].append(link.get('href'))
+                    elif ('youtube.com' in href or 'youtu.be' in href) and href not in social_links['youtube']:
+                        social_links['youtube'].append(link.get('href'))
+                    elif 'behance.net' in href and href not in social_links['other']:
+                        social_links['other'].append(link.get('href'))
+                    elif 'dribbble.com' in href and href not in social_links['other']:
+                        social_links['other'].append(link.get('href'))
+                    elif href not in social_links['other']:
+                        social_links['other'].append(link.get('href'))
                 
                 firm_data['social_links'] = social_links
             
