@@ -246,24 +246,52 @@ class ArchitizerScraper(BaseScraper):
                 logger.info(f"🔄 Scraping profile {i}/{total_urls}: {firm_url}")
                 
                 try:
+                    # Check if URL is already completed in state manager
+                    if self.state_manager.is_url_completed(firm_url, platform="architizer"):
+                        logger.info(f"Skipping already completed URL: {firm_url}")
+                        continue
+                    
                     # Scrape individual firm profile
                     profile = await self._scrape_individual_firm_profile(page, firm_url)
                     
                     if profile:
                         # Save to database
                         if self.database_manager:
-                            self.database_manager.add_profile(profile)
-                            scraped_count += 1
-                            logger.info(f"✅ Scraped and saved new firm: {profile.name}")
+                            try:
+                                # Use thread executor to avoid blocking async execution
+                                loop = asyncio.get_event_loop()
+                                was_added = await loop.run_in_executor(
+                                    self.executor, 
+                                    self.database_manager.add_profile_if_not_exists, 
+                                    profile
+                                )
+                                
+                                if was_added:
+                                    scraped_count += 1
+                                    logger.info(f"✅ Scraped and saved new firm: {profile.name}")
+                                else:
+                                    scraped_count += 1
+                                    logger.info(f"✅ Scraped firm (already exists): {profile.name}")
+                                    
+                            except Exception as db_error:
+                                logger.error(f"Database error saving profile {profile.name}: {db_error}")
+                                scraped_count += 1
                         else:
                             all_profiles.append(profile)
                             scraped_count += 1
                             logger.info(f"✅ Scraped firm: {profile.name}")
+                        
+                        # Mark URL as completed in state manager
+                        self.state_manager.mark_url_completed(firm_url, platform="architizer")
                     else:
                         logger.warning(f"⚠️ Failed to scrape profile: {firm_url}")
+                        # Mark URL as failed in state manager
+                        self.state_manager.mark_url_failed(firm_url, platform="architizer")
                 
                 except Exception as e:
                     logger.error(f"❌ Error scraping profile {firm_url}: {e}")
+                    # Mark URL as failed in state manager
+                    self.state_manager.mark_url_failed(firm_url, platform="architizer")
                     continue
                 
                 # Progress update every 10 profiles
@@ -297,11 +325,9 @@ class ArchitizerScraper(BaseScraper):
                 current_page_urls = await self._extract_firm_urls_from_page(page)
                 logger.info(f"Found {len(current_page_urls)} firm URLs on page {i + 1}")
                 
-                # Mark URLs as processed to avoid duplicates and track in state manager
+                # Mark URLs as processed to avoid duplicates (but don't mark as completed yet)
                 for url in current_page_urls:
                     scraped_urls.add(url)
-                    # Mark as completed in state manager to avoid re-scraping
-                    self.state_manager.mark_url_completed(url, platform="architizer")
                 
                 # Try to click load more button for next iteration
                 load_more_clicked = await self._click_load_more_button(page)
