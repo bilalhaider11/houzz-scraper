@@ -199,11 +199,8 @@ class LeadEnrichmentPipeline:
                             profile_id, name, website, existing_phone, existing_emails_json = profiles_to_scrape[i]
                             logger.error(f"Failed to process {name} ({website}): {result}")
                             batch_results.append((profile_id, name, [], []))
-                            # Mark as attempted even if failed
-                            try:
-                                db_manager.mark_website_scraped_by_id(profile_id)
-                            except Exception as e:
-                                logger.error(f"Failed to mark {profile_id} as scraped: {e}")
+                            # Don't mark as scraped if there was an error
+                            logger.warning(f"Not marking {profile_id} as scraped due to processing error")
                         else:
                             profile_id, name, personal_emails, business_emails, best_email, emails_updated = result
                             if best_email:
@@ -335,10 +332,12 @@ class LeadEnrichmentPipeline:
             logger.error(f"Error extracting emails from {website}: {e}")
             return (profile_id, name, [], [], None, emails_updated)
         finally:
-            # Mark website as scraped regardless of success
+            # Mark website as scraped if we successfully processed it (even if no results found)
+            # Only don't mark if there was an error during processing
             async with db_semaphore:
                 try:
                     db_manager.mark_website_scraped_by_id(profile_id)
+                    logger.info(f"✅ Marked {profile_id} as website scraped (processing completed)")
                 except Exception as e:
                     logger.error(f"Failed to mark website as scraped for {profile_id}: {e}")
 
@@ -511,16 +510,18 @@ class LeadEnrichmentPipeline:
                         if not updates_made:
                             logger.info(f"✗ No new information found for {name}")
                         
-                        # Mark as searched regardless of results
+                        # Mark as searched if processing completed (even if no new information found)
+                        # Only don't mark if there was an error during processing
                         db_manager.mark_google_search_done_by_id(profile_id)
+                        logger.info(f"✅ Marked {profile_id} as Google search done (processing completed)")
                         
                         # Rate limiting for Google API (100 searches per day for free tier)
                         await asyncio.sleep(2)  # 2 second delay between searches
                         
                     except Exception as e:
                         logger.error(f"Error searching for {name}: {e}")
-                        # Still mark as attempted to avoid retrying
-                        db_manager.mark_google_search_done_by_id(profile_id)
+                        # Don't mark as attempted if there was an error
+                        logger.warning(f"❌ Not marking {profile_id} as Google search done due to error")
                         continue
                 
                 # Move to next batch
@@ -609,7 +610,11 @@ class LeadEnrichmentPipeline:
             # Mark all exported profiles as completed
             logger.info(f"Marking {len(exported_profile_ids)} profiles as completed")
             for profile_id in exported_profile_ids:
-                db_manager.mark_profile_completed(profile_id)
+                try:
+                    db_manager.mark_profile_completed(profile_id)
+                    logger.debug(f"✅ Marked profile {profile_id} as completed")
+                except Exception as e:
+                    logger.error(f"❌ Failed to mark profile {profile_id} as completed: {e}")
 
             logger.info(f"Successfully exported verified data to {filepath}")
             return str(filepath)

@@ -365,7 +365,7 @@ class ZeroBounceVerifier:
                     logger.info("Valid personal emails found, keeping business emails as-is")
                     verified_business = email_data.get('business', [])
 
-                # Only update database if we have verified emails
+                # Update database if we have verified emails
                 if verified_personal or verified_business:
                     updated_email_data = {
                         'personal': verified_personal,
@@ -374,11 +374,11 @@ class ZeroBounceVerifier:
                     logger.info(f"✅ Updating {profile_name} with ZeroBounce verified emails - Personal: {verified_personal}, Business: {verified_business}")
                     db_manager.update_profile_emails_json(profile_id, updated_email_data)
                     total_verified += 1
-                    # Only mark as email verified if we have valid emails
-                    db_manager.mark_email_verified(profile_id)
-                else:
-                    logger.info(f"❌ No valid emails found for {profile_name} - not updating database")
-                    # Don't mark as email verified if no valid emails found
+                
+                # Mark as email verified if processing completed (even if no valid emails found)
+                # Only don't mark if there was an error during processing
+                db_manager.mark_email_verified(profile_id)
+                logger.info(f"✅ Marked {profile_id} as email verified (processing completed)")
                 
                 total_processed += 1
                 
