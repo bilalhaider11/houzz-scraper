@@ -456,7 +456,7 @@ class LeadEnrichmentPipeline:
                         )
                         
                         personal_emails = search_results.get('personal_emails', [])
-                        linkedin_profiles = search_results.get('linkedin_profiles', [])
+                        social_profiles = search_results.get('social_profiles', {})
                         found_zipcode = search_results.get('zipcode')
                         
                         # Update database with found information
@@ -480,13 +480,27 @@ class LeadEnrichmentPipeline:
                             else:
                                 logger.info(f"No new personal emails found for {name} (all already exist)")
                         
-                        if linkedin_profiles:
-                            best_linkedin = linkedin_profiles[0]['url']  # Take the first LinkedIn profile
-                            db_manager.update_profile_field(profile_id, 'linkedin_links', [best_linkedin])
-                            logger.info(f"✓ Updated {name} with LinkedIn: {best_linkedin}")
-                            total_with_linkedin += 1
-                            updates_made = True
-                        
+                        # Process social media profiles
+                        if social_profiles:
+                            # Map platform names to database column names
+                            platform_mapping = {
+                                'linkedin': 'linkedin_links',
+                                'facebook': 'facebook_links',
+                                'instagram': 'instagram_links', 
+                                'twitter': 'twitter_links',
+                                'x': 'twitter_links',  # X.com goes to twitter_links
+                                'pinterest': 'pinterest_links',
+                                'youtube': 'youtube_links',
+                            }
+                            for platform, profiles in social_profiles.items():
+                                if profiles and platform in platform_mapping:
+                                    platform_urls = [profile['url'] for profile in profiles]
+                                    column_name = platform_mapping[platform]
+                                    db_manager.update_profile_field(profile_id, column_name, platform_urls)
+                                    logger.info(f"✓ Updated {name} with {platform}: {platform_urls}")
+                                    if platform == 'linkedin':
+                                        total_with_linkedin += 1
+                                    updates_made = True
                         # Update zipcode if found and not already available
                         if found_zipcode and not zipcode:
                             db_manager.update_profile_zipcode(profile_id, found_zipcode)

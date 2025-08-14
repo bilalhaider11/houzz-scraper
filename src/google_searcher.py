@@ -1,8 +1,8 @@
 """Google Searcher Module for the Houzz Lead Generation Pipeline.
 
 Optimized Google Custom Search integrations for improved query building,
-result filtering, and consistency. Uses Google Search API for LinkedIn
-and email discovery.
+result filtering, and consistency. Uses Google Search API for social media
+profiles and email discovery.
 """
 
 import re
@@ -15,7 +15,7 @@ from config.config import config
 from .email_service import email_service, EmailValidationStatus
 
 class GoogleSearcher:
-    """Google search functionality using Google Custom Search API to find personal emails and LinkedIn profiles"""
+    """Google search functionality using Google Custom Search API to find personal emails and social media profiles"""
 
     def __init__(self):
         self.api_key = config.GOOGLE_SEARCH_API_KEY if hasattr(config, 'GOOGLE_SEARCH_API_KEY') else None
@@ -40,6 +40,45 @@ class GoogleSearcher:
         self.quota_exceeded = False
         self.request_count = 0
         self.max_requests_per_day = 100  # Conservative limit for free tier
+
+        # Define social media platforms to search for
+        self.social_platforms = {
+            'linkedin': {
+                'domain': 'linkedin.com/in',
+                'name': 'LinkedIn',
+                'keywords': ['linkedin', 'professional', 'business']
+            },
+            'facebook': {
+                'domain': 'facebook.com',
+                'name': 'Facebook',
+                'keywords': ['facebook', 'fb']
+            },
+            'instagram': {
+                'domain': 'instagram.com',
+                'name': 'Instagram',
+                'keywords': ['instagram', 'ig', 'insta']
+            },
+            'twitter': {
+                'domain': 'twitter.com',
+                'name': 'Twitter',
+                'keywords': ['twitter', 'tweet', 'x.com']
+            },
+            'x': {
+                'domain': 'x.com',
+                'name': 'X (Twitter)',
+                'keywords': ['x.com', 'twitter', 'tweet']
+            },
+            'pinterest': {
+                'domain': 'pinterest.com',
+                'name': 'Pinterest',
+                'keywords': ['pinterest', 'pin']
+            },
+            'youtube': {
+                'domain': 'youtube.com',
+                'name': 'YouTube',
+                'keywords': ['youtube', 'yt', 'video']
+            }
+        }
 
     def _log_setup_instructions(self):
         """Log setup instructions for developers to configure Google Custom Search API."""
@@ -71,7 +110,7 @@ class GoogleSearcher:
     
     def search_professional_info(self, name: str, professional_type: str, location: str = None, website: str = None, social_links: dict = None, address: str = None, zipcode: str = None) -> Dict[str, Any]:
         """
-        Search for a professional's Gmail, LinkedIn, and zipcode information using Google Custom Search
+        Search for a professional's Gmail, social media profiles, and zipcode information using Google Custom Search
         
         Args:
             name: Professional's name
@@ -83,15 +122,15 @@ class GoogleSearcher:
             zipcode: Existing zipcode (if any)
             
         Returns:
-            Dictionary containing found Gmail addresses, LinkedIn profiles, and zipcode
+            Dictionary containing found Gmail addresses, social media profiles, and zipcode
         """
         if not self.api_key or not self.search_engine_id:
             logger.warning("Google Custom Search API not configured, skipping Google search")
-            return {'personal_emails': [], 'linkedin_profiles': []}
+            return {'personal_emails': [], 'social_profiles': {}}
         
         results = {
             'personal_emails': [],
-            'linkedin_profiles': [],
+            'social_profiles': {},
             'zipcode': None
         }
         
@@ -105,9 +144,9 @@ class GoogleSearcher:
             personal_results = self._search_personal_emails(name, professional_type, location, website, social_links)
             results['personal_emails'] = personal_results
             
-            # Search for LinkedIn profiles with enhanced logging
-            linkedin_results = self._search_linkedin(name, professional_type, location, website, social_links)
-            results['linkedin_profiles'] = linkedin_results
+            # Search for social media profiles with enhanced logging
+            social_results = self._search_social_media_profiles(name, professional_type, location, website, social_links)
+            results['social_profiles'] = social_results
             
             # Search for zipcode if not already available
             if not zipcode and address:
@@ -116,7 +155,7 @@ class GoogleSearcher:
             
             # Enhanced completion logging with performance metrics
             search_summary = f"📊 Search completed for {name}: "
-            search_summary += f"📧 {len(personal_results)} email(s), 🔗 {len(linkedin_results)} LinkedIn profile(s)"
+            search_summary += f"📧 {len(personal_results)} email(s), 🔗 {sum(len(profiles) for profiles in social_results.values())} social profile(s)"
             if personal_results:
                 search_summary += f" | Emails: {personal_results}"
             logger.info(search_summary)
@@ -127,77 +166,52 @@ class GoogleSearcher:
         return results
     
     def _search_personal_emails(self, name: str, professional_type: str, location: str = None, website: str = None, social_links: dict = None) -> List[str]:
-        """Search specifically for personal email addresses using enhanced query format"""
+        """Search specifically for personal email addresses using optimized query strategies"""
         personal_emails = []
         
         try:
             # Extract domain variations from website and social links
             domain_variations = self._extract_domain_variations(website, social_links)
             
-            # Construct advanced search query following the specified format:
-            # "Name" ("domain.com" OR "go.domain" OR "Domain_Name") ("@gmail.com" OR "@outlook.com") professional_type "United States" OR "USA" site:domain.com OR site:linkedin.com OR site:facebook.com OR site:twitter.com OR site:x.com OR instagram.com
+            # Create multiple query variations for better coverage
+            query_variations = self._build_email_query_variations(name, professional_type, location, domain_variations, website)
             
-            query_parts = []
+            logger.info(f"🔍 Starting email search for {name} with {len(query_variations)} query variations")
             
-            # Add quoted name
-            query_parts.append(f'"{name}"')
-            
-            # Add domain variations if available
-            if domain_variations:
-                domain_part = '(' + ' OR '.join([f'"{var}"' for var in domain_variations]) + ')'
-                query_parts.append(domain_part)
-            
-            # Add personal email domains
-            email_domains = '("@gmail.com" OR "@outlook.com" OR "@hotmail.com" OR "@yahoo.com" OR "@icloud.com" OR "@aol.com" OR "@protonmail.com" OR "@me.com")'
-            query_parts.append(email_domains)
-            
-            # Add professional type for better targeting
-            if professional_type:
-                query_parts.append(f'"{professional_type}"')
-            
-            # Add USA filtering
-            query_parts.append('("United States" OR "USA" OR "US")')
-            
-            # Add site restrictions
-            site_restrictions = self._build_site_restrictions(website, social_links)
-            if site_restrictions:
-                query_parts.append(site_restrictions)
-            
-            query = ' '.join(query_parts)
-            
-            logger.debug(f"Enhanced Gmail search query: {query}")
-            
-            # Perform the search
-            search_results = self._perform_google_search(query, num_results=10)
-            
-            # Enhanced logging for search results
-            if search_results:
-                total_results = search_results.get('searchInformation', {}).get('totalResults', '0')
-                logger.info(f"🔍 Email search for {name}: {total_results} total results found")
+            for idx, query in enumerate(query_variations, 1):
+                logger.debug(f"📝 Email search query {idx}: {query}")
                 
-                if 'items' in search_results:
-                    logger.debug(f"📄 Processing {len(search_results['items'])} search result items")
+                # Perform the search
+                search_results = self._perform_google_search(query, num_results=10)
+                
+                # Enhanced logging for search results
+                if search_results:
+                    total_results = search_results.get('searchInformation', {}).get('totalResults', '0')
+                    logger.debug(f"🔍 Query {idx} for {name}: {total_results} total results found")
                     
-                    for idx, item in enumerate(search_results['items'], 1):
-                        # Extract personal email addresses from title, snippet, and displayed link
-                        text_to_search = " ".join([
-                            item.get("title", ""),
-                            item.get("snippet", ""),
-                            item.get("displayLink", ""),
-                            item.get("link", "")
-                        ])
+                    if 'items' in search_results:
+                        logger.debug(f"📄 Processing {len(search_results['items'])} search result items from query {idx}")
                         
-                        logger.debug(f"📋 Result {idx}: {item.get('title', 'No title')[:50]}... | Domain: {item.get('displayLink', 'N/A')}")
-                        
-                        # Find personal email addresses in the text
-                        found_emails = self._extract_personal_email_addresses(text_to_search)
-                        if found_emails:
-                            logger.info(f"✅ Found {len(found_emails)} potential emails in result {idx}: {found_emails}")
-                        personal_emails.extend(found_emails)
+                        for item_idx, item in enumerate(search_results['items'], 1):
+                            # Extract personal email addresses from title, snippet, and displayed link
+                            text_to_search = " ".join([
+                                item.get("title", ""),
+                                item.get("snippet", ""),
+                                item.get("displayLink", ""),
+                                item.get("link", "")
+                            ])
+                            
+                            logger.debug(f"📋 Result {item_idx} from query {idx}: {item.get('title', 'No title')[:50]}... | Domain: {item.get('displayLink', 'N/A')}")
+                            
+                            # Find personal email addresses in the text
+                            found_emails = self._extract_personal_email_addresses(text_to_search)
+                            if found_emails:
+                                logger.info(f"✅ Found {len(found_emails)} potential emails in result {item_idx} from query {idx}: {found_emails}")
+                            personal_emails.extend(found_emails)
+                    else:
+                        logger.debug(f"⚠️ No search result items found for query {idx}")
                 else:
-                    logger.warning(f"⚠️ No search result items found for {name}")
-            else:
-                logger.warning(f"⚠️ No search results returned for {name}")
+                    logger.debug(f"⚠️ No search results returned for query {idx}")
             
             # Remove duplicates while preserving order
             personal_emails = list(dict.fromkeys(personal_emails))
@@ -214,6 +228,96 @@ class GoogleSearcher:
         
         return personal_emails
     
+    def _build_email_query_variations(self, name: str, professional_type: str, location: str, domain_variations: List[str], website: str) -> List[str]:
+        """Build multiple optimized query variations for email search"""
+        queries = []
+        
+        # Extract clean name and domain
+        clean_name = self._clean_name_for_search(name)
+        domain_name = self._extract_domain_name(website) if website else None
+        
+        # Query Variation 1: Direct name + email domains (most specific)
+        query1_parts = [f'"{clean_name}"']
+        if domain_name:
+            query1_parts.append(f'"{domain_name}"')
+        query1_parts.extend([
+            '("@gmail.com" OR "@outlook.com" OR "@hotmail.com" OR "@yahoo.com" OR "@icloud.com")',
+            '("United States" OR "USA" OR "US")'
+        ])
+        if professional_type:
+            query1_parts.append(f'"{professional_type}"')
+        queries.append(' '.join(query1_parts))
+        
+        # Query Variation 2: Name + professional type + email domains (broader)
+        query2_parts = [f'"{clean_name}"']
+        if professional_type:
+            query2_parts.append(f'"{professional_type}"')
+        query2_parts.extend([
+            '("@gmail.com" OR "@outlook.com" OR "@hotmail.com" OR "@yahoo.com")',
+            '("United States" OR "USA")'
+        ])
+        if location:
+            query2_parts.append(f'"{location}"')
+        queries.append(' '.join(query2_parts))
+        
+        # Query Variation 3: Name + domain variations + email (if domain available)
+        if domain_variations:
+            query3_parts = [f'"{clean_name}"']
+            domain_part = '(' + ' OR '.join([f'"{var}"' for var in domain_variations[:3]]) + ')'
+            query3_parts.append(domain_part)
+            query3_parts.extend([
+                '("@gmail.com" OR "@outlook.com" OR "@hotmail.com")',
+                '("United States" OR "USA")'
+            ])
+            queries.append(' '.join(query3_parts))
+        
+        # Query Variation 4: Name + contact information keywords
+        query4_parts = [
+            f'"{clean_name}"',
+            '("contact" OR "email" OR "reach" OR "get in touch")',
+            '("@gmail.com" OR "@outlook.com" OR "@hotmail.com")',
+            '("United States" OR "USA")'
+        ]
+        if professional_type:
+            query4_parts.append(f'"{professional_type}"')
+        queries.append(' '.join(query4_parts))
+        
+        # Query Variation 5: Name + business context (if professional type available)
+        if professional_type:
+            query5_parts = [
+                f'"{clean_name}"',
+                f'"{professional_type}"',
+                '("owner" OR "founder" OR "principal" OR "director")',
+                '("@gmail.com" OR "@outlook.com" OR "@hotmail.com")',
+                '("United States" OR "USA")'
+            ]
+            queries.append(' '.join(query5_parts))
+        
+        # Remove duplicates and limit to reasonable number
+        unique_queries = list(dict.fromkeys(queries))
+        return unique_queries[:5]  # Limit to 5 variations
+    
+    def _clean_name_for_search(self, name: str) -> str:
+        """Clean and optimize name for search queries"""
+        if not name:
+            return ""
+        
+        # Remove common business suffixes
+        business_suffixes = ['llc', 'inc', 'corp', 'ltd', 'company', 'co.', 'studio', 'design', 'interiors', 'interior', 'group', 'associates', 'architects']
+        clean_name = name.lower()
+        
+        for suffix in business_suffixes:
+            clean_name = clean_name.replace(f' {suffix}', '').replace(f'.{suffix}', '').replace(suffix, '')
+        
+        clean_name = clean_name.strip()
+        
+        # If name is too long, take first few meaningful words
+        words = clean_name.split()
+        if len(words) > 4:
+            clean_name = ' '.join(words[:4])
+        
+        return clean_name.title()
+    
     def _validate_emails_comprehensively(self, emails: List[str], name: str) -> List[str]:
         """Comprehensive email validation with detailed logging and business-friendly acceptance criteria (BASIC VALIDATION ONLY - NO ZEROBOUNCE)"""
         if not emails:
@@ -229,67 +333,158 @@ class GoogleSearcher:
         return validated_emails
     
     
-    def _search_linkedin(self, name: str, professional_type: str, location: str = None, website: str = None, social_links: dict = None) -> List[Dict[str, str]]:
-        """Search specifically for LinkedIn profiles with better targeting"""
-        linkedin_profiles = []
+
+    
+    def _search_social_media_profiles(self, name: str, professional_type: str, location: str = None, website: str = None, social_links: dict = None) -> Dict[str, List[Dict[str, str]]]:
+        """Search for social media profiles across multiple platforms"""
+        social_profiles = {}
         
         try:
+            logger.info(f"🔍 Searching for social media profiles for {name}")
+            
             # Extract business name variations for better targeting
             business_variations = self._extract_business_name_variations(name)
             
-            # Construct targeted search query for LinkedIn
-            query_parts = [
-                f'"{name}"',
-                "site:linkedin.com/in",
-                "United States OR USA OR US"  # Focus on USA
-            ]
-            
-            # Add professional type if available
-            if professional_type:
-                query_parts.append(professional_type)
-            
-            # Add business name variations to make search more specific
-            if business_variations:
-                business_part = '(' + ' OR '.join([f'"{var}"' for var in business_variations]) + ')'
-                query_parts.append(business_part)
-            
-            # Add website domain if available for better targeting
-            if website:
-                domain_name = self._extract_domain_name(website)
-                if domain_name:
-                    query_parts.append(f'"{domain_name}"')
-            
-            if location:
-                query_parts.append(location)
-            
-            query = " ".join(query_parts)
-            
-            logger.debug(f"Enhanced LinkedIn search query: {query}")
-            
-            # Perform the search
-            search_results = self._perform_google_search(query, num_results=5)
-            
-            if search_results and 'items' in search_results:
-                for item in search_results['items']:
-                    link = item.get("link", "")
-                    title = item.get("title", "")
-                    snippet = item.get("snippet", "")
+            # Search each social media platform
+            for platform, platform_info in self.social_platforms.items():
+                try:
+                    platform_profiles = self._search_specific_social_platform(
+                        name, professional_type, location, website, social_links, 
+                        platform, platform_info, business_variations
+                    )
                     
-                    # Check if it's a LinkedIn profile with enhanced relevance checking
-                    if "linkedin.com/in/" in link and self._is_relevant_business_linkedin_profile(title, snippet, name, business_variations, professional_type):
-                        linkedin_profiles.append({
-                            'url': link,
-                            'title': title,
-                            'snippet': snippet
-                        })
+                    if platform_profiles:
+                        social_profiles[platform] = platform_profiles
+                        logger.info(f"✅ Found {len(platform_profiles)} {platform_info['name']} profile(s) for {name}")
+                    else:
+                        logger.debug(f"❌ No {platform_info['name']} profiles found for {name}")
+                        
+                except Exception as e:
+                    logger.error(f"Error searching {platform_info['name']} for {name}: {e}")
+                    continue
             
-            if linkedin_profiles:
-                logger.info(f"Found {len(linkedin_profiles)} relevant LinkedIn profile(s) for {name}")
+            # Log summary
+            total_profiles = sum(len(profiles) for profiles in social_profiles.values())
+            if total_profiles > 0:
+                logger.info(f"🎯 Total social media profiles found for {name}: {total_profiles} across {len(social_profiles)} platforms")
+            else:
+                logger.info(f"❌ No social media profiles found for {name}")
+                
+        except Exception as e:
+            logger.error(f"Error searching for social media profiles for {name}: {e}")
+        
+        return social_profiles
+    
+    def _search_specific_social_platform(self, name: str, professional_type: str, location: str, website: str, social_links: dict, platform: str, platform_info: dict, business_variations: List[str]) -> List[Dict[str, str]]:
+        """Search for profiles on a specific social media platform using optimized query strategies"""
+        profiles = []
+        
+        try:
+            # Create multiple query variations for better coverage
+            query_variations = self._build_social_query_variations(
+                name, professional_type, location, website, platform, platform_info, business_variations
+            )
+            
+            logger.debug(f"🔍 Searching {platform_info['name']} for {name} with {len(query_variations)} query variations")
+            
+            for idx, query in enumerate(query_variations, 1):
+                logger.debug(f"📝 {platform_info['name']} search query {idx}: {query}")
+                
+                # Perform the search
+                search_results = self._perform_google_search(query, num_results=5)
+                
+                if search_results and 'items' in search_results:
+                    logger.debug(f"📄 Processing {len(search_results['items'])} results from {platform_info['name']} query {idx}")
+                    
+                    for item in search_results['items']:
+                        link = item.get("link", "")
+                        title = item.get("title", "")
+                        snippet = item.get("snippet", "")
+                        
+                        # Check if it's a relevant profile for this platform
+                        if self._is_relevant_social_profile(link, title, snippet, name, business_variations, professional_type, platform, platform_info):
+                            # Check if we already have this profile
+                            if not any(p['url'] == link for p in profiles):
+                                profiles.append({
+                                    'url': link,
+                                    'title': title,
+                                    'snippet': snippet,
+                                    'platform': platform,
+                                    'platform_name': platform_info['name']
+                                })
+                                logger.debug(f"✅ Found relevant {platform_info['name']} profile: {title[:50]}...")
             
         except Exception as e:
-            logger.error(f"Error searching for LinkedIn profiles for {name}: {e}")
+            logger.error(f"Error searching {platform_info['name']} for {name}: {e}")
         
-        return linkedin_profiles
+        return profiles
+    
+    def _build_social_query_variations(self, name: str, professional_type: str, location: str, website: str, platform: str, platform_info: dict, business_variations: List[str]) -> List[str]:
+        """Build multiple optimized query variations for social media search"""
+        queries = []
+        
+        # Extract clean name and domain
+        clean_name = self._clean_name_for_search(name)
+        domain_name = self._extract_domain_name(website) if website else None
+        
+        # Query Variation 1: Direct name + platform site restriction (most specific)
+        query1_parts = [
+            f'"{clean_name}"',
+            f"site:{platform_info['domain']}"
+        ]
+        if professional_type:
+            query1_parts.append(f'"{professional_type}"')
+        queries.append(' '.join(query1_parts))
+        
+        # Query Variation 2: Name + business variations + platform
+        if business_variations:
+            query2_parts = [f'"{clean_name}"']
+            business_part = '(' + ' OR '.join([f'"{var}"' for var in business_variations[:2]]) + ')'
+            query2_parts.append(business_part)
+            query2_parts.append(f"site:{platform_info['domain']}")
+            queries.append(' '.join(query2_parts))
+        
+        # Query Variation 3: Name + domain + platform (if domain available)
+        if domain_name:
+            query3_parts = [
+                f'"{clean_name}"',
+                f'"{domain_name}"',
+                f"site:{platform_info['domain']}"
+            ]
+            queries.append(' '.join(query3_parts))
+        
+        # Query Variation 4: Name + location + platform (if location available)
+        if location:
+            query4_parts = [
+                f'"{clean_name}"',
+                f'"{location}"',
+                f"site:{platform_info['domain']}"
+            ]
+            if professional_type:
+                query4_parts.append(f'"{professional_type}"')
+            queries.append(' '.join(query4_parts))
+        
+        # Query Variation 5: Name + professional keywords + platform
+        if professional_type:
+            query5_parts = [
+                f'"{clean_name}"',
+                f'"{professional_type}"',
+                '("owner" OR "founder" OR "principal" OR "director" OR "ceo")',
+                f"site:{platform_info['domain']}"
+            ]
+            queries.append(' '.join(query5_parts))
+        
+        # Query Variation 6: Name + platform-specific keywords
+        if platform_info.get('keywords'):
+            query6_parts = [f'"{clean_name}"']
+            keywords_part = '(' + ' OR '.join(platform_info['keywords'][:2]) + ')'
+            query6_parts.append(keywords_part)
+            query6_parts.append(f"site:{platform_info['domain']}")
+            queries.append(' '.join(query6_parts))
+        
+        # Remove duplicates and limit to reasonable number
+        unique_queries = list(dict.fromkeys(queries))
+        return unique_queries[:4]  # Limit to 4 variations per platform
     
     def _search_zipcode(self, name: str, professional_type: str, address: str, website: str = None) -> Optional[str]:
         """
@@ -467,7 +662,7 @@ class GoogleSearcher:
         return None
     
     def _extract_domain_variations(self, website: str, social_links: dict = None) -> List[str]:
-        """Extract domain variations from website URL and social links for enhanced search queries"""
+        """Extract optimized domain variations from website URL and social links for enhanced search queries"""
         # Use cache key based on website and social links
         cache_key = f"{website}_{hash(str(social_links))}"
         if cache_key in self._domain_cache:
@@ -487,16 +682,27 @@ class GoogleSearcher:
                     domain_parts = domain.split('.')
                     main_domain = domain_parts[0]
                     
-                    # Add variations
-                    variations.append(domain)  # full domain like "domum.design"
-                    variations.append(f"go.{main_domain}")  # "go.domum"
-                    variations.append(f"{main_domain.title()}_Design")  # "Domum_Design"
-                    variations.append(main_domain)  # "domum"
+                    # Add most useful variations (prioritized by search effectiveness)
+                    variations.append(main_domain)  # "domum" - most common search term
+                    variations.append(domain)  # "domum.design" - full domain
+                    
+                    # Only add these if they're meaningful
+                    if len(main_domain) > 3:  # Avoid very short domains
+                        # Create business name variations
+                        if len(domain_parts) > 1 and domain_parts[1] in ['com', 'org', 'net', 'co', 'design', 'studio']:
+                            # For domains like "domum.design", create "Domum Design"
+                            business_name = f"{main_domain.title()} {domain_parts[1].title()}"
+                            variations.append(business_name)
+                        
+                        # Add common business variations
+                        variations.append(f"{main_domain.title()} Design")
+                        variations.append(f"{main_domain.title()} Studio")
+                        variations.append(f"{main_domain.title()} Interiors")
                     
             except Exception as e:
                 logger.debug(f"Error extracting domain variations from {website}: {e}")
         
-        # Extract variations from social links if available
+        # Extract meaningful variations from social links if available
         if social_links and isinstance(social_links, dict):
             for platform, url in social_links.items():
                 if url and isinstance(url, str):
@@ -504,26 +710,35 @@ class GoogleSearcher:
                         # Extract handle or username from social URLs
                         if 'instagram.com/' in url.lower():
                             handle = url.split('/')[-1]
-                            if handle and handle != 'instagram.com':
+                            if handle and handle != 'instagram.com' and len(handle) > 2:
                                 variations.append(handle)
                         elif 'facebook.com/' in url.lower():
                             handle = url.split('/')[-1]
-                            if handle and handle != 'facebook.com':
+                            if handle and handle != 'facebook.com' and len(handle) > 2:
                                 variations.append(handle)
                         elif 'twitter.com/' in url.lower() or 'x.com/' in url.lower():
                             handle = url.split('/')[-1]
-                            if handle and handle not in ['twitter.com', 'x.com']:
+                            if handle and handle not in ['twitter.com', 'x.com'] and len(handle) > 2:
                                 variations.append(handle)
                     except Exception as e:
                         logger.debug(f"Error extracting variation from social link {url}: {e}")
         
-        # Remove duplicates and empty values
-        variations = list(dict.fromkeys([v for v in variations if v]))
+        # Remove duplicates and empty values, prioritize by length and relevance
+        filtered_variations = []
+        for v in variations:
+            if v and len(v) > 2 and v not in filtered_variations:
+                filtered_variations.append(v)
+        
+        # Sort by relevance (shorter, more common terms first)
+        filtered_variations.sort(key=lambda x: (len(x), x))
+        
+        # Limit to most useful variations
+        final_variations = filtered_variations[:5]
         
         # Cache the result
-        self._domain_cache[cache_key] = variations
+        self._domain_cache[cache_key] = final_variations
         
-        return variations
+        return final_variations
     
     def _build_site_restrictions(self, website: str, social_links: dict = None) -> str:
         """Build site restrictions for search query"""
@@ -539,14 +754,13 @@ class GoogleSearcher:
             except:
                 pass
         
-        # Add common social media sites
-        social_sites = [
-            'site:linkedin.com',
-            'site:facebook.com', 
-            'site:twitter.com',
-            'site:x.com',
-            'site:instagram.com'
-        ]
+        # Add all social media sites from our platform definitions
+        social_sites = []
+        for platform_info in self.social_platforms.values():
+            domain = platform_info['domain']
+            if domain not in social_sites:
+                social_sites.append(f"site:{domain}")
+        
         sites.extend(social_sites)
         
         return ' OR '.join(sites) if sites else ''
@@ -625,7 +839,7 @@ class GoogleSearcher:
         logger.info("Google Custom Search API quota status reset")
     
     def _extract_business_name_variations(self, name: str) -> List[str]:
-        """Extract business name variations for better search targeting"""
+        """Extract optimized business name variations for better search targeting"""
         if not name:
             return []
         
@@ -646,21 +860,44 @@ class GoogleSearcher:
         if clean_name and clean_name != name.lower():
             variations.append(clean_name.title())
         
-        # Extract individual words (meaningful ones)
+        # Extract individual meaningful words
         words = [word for word in clean_name.split() if len(word) > 2]
         if len(words) > 1:
-            # Add combinations of words
+            # Add individual words (for broader matching)
             variations.extend(words)
+            
+            # Add meaningful word combinations
             if len(words) == 2:
                 variations.append(f"{words[0]} {words[1]}")
+            elif len(words) == 3:
+                variations.append(f"{words[0]} {words[1]}")
+                variations.append(f"{words[1]} {words[2]}")
+            elif len(words) > 3:
+                # For longer names, focus on first two and last two words
+                variations.append(f"{words[0]} {words[1]}")
+                variations.append(f"{words[-2]} {words[-1]}")
         
-        # Remove duplicates and empty values
-        variations = list(dict.fromkeys([v for v in variations if v and len(v) > 2]))
+        # Create professional variations
+        if 'design' in clean_name or 'interior' in clean_name:
+            # For design businesses, create variations with "Design" and "Interior"
+            base_words = [w for w in words if w not in ['design', 'interior', 'interiors']]
+            if base_words:
+                variations.append(f"{' '.join(base_words[:2]).title()} Design")
+                variations.append(f"{' '.join(base_words[:2]).title()} Interiors")
         
-        return variations[:5]  # Limit to avoid overly long queries
+        # Remove duplicates and empty values, prioritize by relevance
+        filtered_variations = []
+        for v in variations:
+            if v and len(v) > 2 and v not in filtered_variations:
+                filtered_variations.append(v)
+        
+        # Sort by relevance (shorter, more specific terms first)
+        filtered_variations.sort(key=lambda x: (len(x), x))
+        
+        return filtered_variations[:6]  # Limit to 6 most relevant variations
     
-    def _is_relevant_business_linkedin_profile(self, title: str, snippet: str, business_name: str, business_variations: List[str], professional_type: str) -> bool:
-        """Enhanced relevance checking for LinkedIn profiles with business context"""
+    def _is_relevant_social_profile(self, link: str, title: str, snippet: str, business_name: str, business_variations: List[str], professional_type: str, platform: str, platform_info: dict) -> bool:
+        """Enhanced relevance checking for social media profiles with improved scoring system"""
         if not title or not business_name:
             return False
         
@@ -668,7 +905,11 @@ class GoogleSearcher:
         snippet_lower = snippet.lower() if snippet else ""
         combined_text = f"{title_lower} {snippet_lower}"
         
-        # Check for business name matches
+        # Initialize scoring system
+        relevance_score = 0
+        max_possible_score = 0
+        
+        # Check for business name matches (highest weight)
         business_matches = 0
         all_variations = [business_name] + (business_variations or [])
         
@@ -677,44 +918,89 @@ class GoogleSearcher:
                 variation_lower = variation.lower()
                 if variation_lower in combined_text:
                     business_matches += 1
+                    # Exact matches get higher scores
+                    if variation_lower in title_lower:
+                        relevance_score += 5  # Exact match in title
+                    else:
+                        relevance_score += 3  # Match in snippet
+        
+        max_possible_score += len(all_variations) * 5
         
         # Check for professional type relevance
         if professional_type:
             prof_type_words = professional_type.lower().split()
-            profession_matches = sum(1 for word in prof_type_words if word in combined_text)
-        else:
             profession_matches = 0
+            for word in prof_type_words:
+                if word in combined_text:
+                    profession_matches += 1
+                    relevance_score += 2
+            max_possible_score += len(prof_type_words) * 2
         
-        # Check for business-related keywords
-        business_keywords = ['owner', 'founder', 'principal', 'ceo', 'president', 'director', 'manager', 'lead', 'senior']
-        business_role_matches = sum(1 for keyword in business_keywords if keyword in combined_text)
+        # Check for business role indicators
+        business_keywords = ['owner', 'founder', 'principal', 'ceo', 'president', 'director', 'manager', 'lead', 'senior', 'head']
+        business_role_matches = 0
+        for keyword in business_keywords:
+            if keyword in combined_text:
+                business_role_matches += 1
+                relevance_score += 2
+        max_possible_score += len(business_keywords) * 2
         
-        # Scoring system for relevance
-        relevance_score = 0
+        # Check for platform-specific relevance
+        platform_matches = 0
+        if platform_info.get('keywords'):
+            for keyword in platform_info['keywords']:
+                if keyword.lower() in combined_text:
+                    platform_matches += 1
+                    relevance_score += 1
+            max_possible_score += len(platform_info['keywords'])
         
-        # Business name match is most important
-        if business_matches > 0:
-            relevance_score += business_matches * 3
+        # Check for location indicators (US-based)
+        us_indicators = ['united states', 'usa', 'us ', ' us,', 'california', 'new york', 'texas', 'florida', 'illinois', 'chicago', 'los angeles', 'san francisco']
+        us_matches = 0
+        for indicator in us_indicators:
+            if indicator in combined_text:
+                us_matches += 1
+                relevance_score += 1
+        max_possible_score += len(us_indicators)
         
-        # Professional type match
-        if profession_matches > 0:
-            relevance_score += profession_matches * 2
+        # Check for professional industry keywords
+        industry_keywords = ['interior design', 'architecture', 'design', 'construction', 'renovation', 'remodeling', 'decorating', 'furniture', 'lighting']
+        industry_matches = 0
+        for keyword in industry_keywords:
+            if keyword in combined_text:
+                industry_matches += 1
+                relevance_score += 2
+        max_possible_score += len(industry_keywords) * 2
         
-        # Business role indicators
-        if business_role_matches > 0:
-            relevance_score += business_role_matches
+        # Penalize obviously irrelevant profiles
+        irrelevant_indicators = ['student', 'intern', 'looking for', 'seeking', 'recent graduate', 'entry level', 'junior', 'assistant']
+        for indicator in irrelevant_indicators:
+            if indicator in combined_text:
+                relevance_score -= 3
         
-        # Location indicators (US-based)
-        us_indicators = ['united states', 'usa', 'us ', ' us,', 'california', 'new york', 'texas', 'florida', 'illinois']
-        us_matches = sum(1 for indicator in us_indicators if indicator in combined_text)
-        if us_matches > 0:
-            relevance_score += 1
+        # Check for profile completeness indicators
+        completeness_indicators = ['profile', 'about', 'experience', 'portfolio', 'work', 'projects']
+        for indicator in completeness_indicators:
+            if indicator in combined_text:
+                relevance_score += 1
         
-        # Filter out obviously irrelevant profiles
-        irrelevant_indicators = ['student', 'intern', 'looking for', 'seeking', 'recent graduate']
-        if any(indicator in combined_text for indicator in irrelevant_indicators):
-            relevance_score -= 2
+        # Calculate relevance percentage
+        if max_possible_score > 0:
+            relevance_percentage = (relevance_score / max_possible_score) * 100
+        else:
+            relevance_percentage = 0
         
-        # Require minimum relevance score
-        return relevance_score >= 3
+        # Require minimum relevance score and percentage
+        min_score = 4  # Minimum absolute score
+        min_percentage = 20  # Minimum percentage of max possible score
+        
+        is_relevant = relevance_score >= min_score and relevance_percentage >= min_percentage
+        
+        # Log detailed scoring for debugging
+        if is_relevant:
+            logger.debug(f"✅ Relevant profile found: {title[:50]}... (Score: {relevance_score}/{max_possible_score}, {relevance_percentage:.1f}%)")
+        else:
+            logger.debug(f"❌ Irrelevant profile: {title[:50]}... (Score: {relevance_score}/{max_possible_score}, {relevance_percentage:.1f}%)")
+        
+        return is_relevant
     

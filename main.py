@@ -11,7 +11,7 @@ Key Features:
 - 4-Phase Pipeline: Platform scraping → Website email mining → Google enrichment → Verification & export
 - ZeroBounce Integration: Production-grade email verification with smart credit management
 - Playwright Automation: JavaScript-heavy website scraping with browser automation
-- Google Custom Search: Finds Gmail addresses and LinkedIn profiles
+- Google Custom Search: Finds Gmail addresses and social media profiles
 - Intelligent Email Prioritization: Personal > Business > Generic email selection
 - SQLite Database: Persistent storage with progress tracking and resume capability
 - Anti-Detection: CAPTCHA handling, proxy support, rate limiting, user-agent rotation
@@ -20,7 +20,7 @@ Key Features:
 Phase Breakdown:
     Phase 1: Platform Profile Scraping - Extract professional profiles from Houzz/Architizer
     Phase 2: Advanced Website Email Mining - Use Playwright to extract emails from professional websites  
-    Phase 3: Google Custom Search Enrichment - Find Gmail addresses and LinkedIn profiles via Google API
+    Phase 3: Google Custom Search Enrichment - Find Gmail addresses and social media profiles via Google API
     Phase 4: ZeroBounce Verification & CSV Export - Verify emails and export to production-ready CSV
 
 Usage Examples:

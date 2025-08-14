@@ -20,7 +20,7 @@ A production-ready, enterprise-grade 4-phase data scraping and enrichment pipeli
 ### 🔧 Advanced Features
 - **✅ ZeroBounce Integration**: Production-grade email verification with smart credit management
 - **🌐 Playwright Automation**: JavaScript-heavy website scraping with browser automation
-- **🔍 Google Custom Search**: Finds Gmail addresses and LinkedIn profiles
+- **🔍 Google Custom Search**: Finds Gmail addresses and social media profiles
 - **📊 Intelligent Email Prioritization**: Personal > Business > Generic email selection
 - **💾 SQLite Database**: Persistent storage with progress tracking and resume capability
 - **🛡️ Anti-Detection**: CAPTCHA handling, proxy support, rate limiting, user-agent rotation
@@ -139,12 +139,12 @@ nano .env
 
 **Required API Keys:**
 - **ZeroBounce API Key**: For production-grade email verification ([Get API key](https://www.zerobounce.net/))
-- **Google Custom Search API**: For Gmail discovery and LinkedIn enrichment ([Setup instructions below](#google-custom-search-api-setup))
+- **Google Custom Search API**: For Gmail discovery and social media profile enrichment ([Setup instructions below](#google-custom-search-api-setup))
 - **Google Custom Search CX**: Search engine ID for Custom Search API
 
 **Note**: The pipeline can run without API keys but with reduced functionality:
 - Without ZeroBounce: Basic email validation only (use `--no-email-verification`)
-- Without Google APIs: No Gmail discovery or LinkedIn enrichment
+- Without Google APIs: No Gmail discovery or social media profile enrichment
 
 ### 3. Activate Virtual Environment
 
@@ -270,7 +270,7 @@ python3 main.py --platform architizer --phase websearch
 ### Phase 3: 🔍 Google Custom Search Enrichment
 **What it does:**
 - Uses Google Custom Search API to find additional Gmail addresses
-- Performs targeted searches to discover LinkedIn profiles
+- Performs targeted searches to discover social media profiles (LinkedIn, Facebook, Instagram, Twitter, etc.)
 - Enriches existing data with additional personal contact methods
 - Merges new email findings with existing website-scraped emails
 - Applies intelligent deduplication and prioritization
@@ -283,7 +283,7 @@ python3 main.py --platform houzz --phase googlesearch
 python3 main.py --platform architizer --phase googlesearch
 ```
 
-**Output:** Profiles further enriched with Gmail addresses, LinkedIn profile URLs, and location data.
+**Output:** Profiles further enriched with Gmail addresses, social media profile URLs, and location data.
 
 ---
 
@@ -299,7 +299,7 @@ python3 main.py --platform architizer --phase googlesearch
 **Intelligent CSV Export:**
 - Exports all enriched and verified profile data to timestamped CSV files
 - Applies intelligent email prioritization (personal > business > generic)
-- Includes all collected data: verified emails, phones, LinkedIn, websites
+- Includes all collected data: verified emails, phones, social media profiles, websites
 - Creates production-ready lead files for immediate outreach use
 - Platform-specific column ordering and data formatting
 
@@ -666,7 +666,7 @@ sqlite3 data/scraper.db "SELECT COUNT(*) FROM professionals;"
 
 ## 🔧 Google Custom Search API Setup
 
-To enable Gmail discovery and LinkedIn enrichment, you need to set up Google Custom Search API:
+To enable Gmail discovery and social media profile enrichment, you need to set up Google Custom Search API:
 
 ### 1. Create Google Cloud Project
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
@@ -686,7 +686,7 @@ To enable Gmail discovery and LinkedIn enrichment, you need to set up Google Cus
 
 ### 4. Configure Search Settings
 1. In your search engine settings, enable "Search the entire web"
-2. Add sites to search: `linkedin.com`, `gmail.com`, etc.
+2. Add sites to search: `linkedin.com`, `facebook.com`, `instagram.com`, `twitter.com`, `x.com`, `pinterest.com`, `youtube.com`, `tiktok.com`, `gmail.com`, etc.
 
 ## 🤝 Contributing
 
