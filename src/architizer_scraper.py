@@ -1024,8 +1024,15 @@ class ArchitizerScraper(BaseScraper):
                     social_links['other'].append(href)
                 elif 'dribbble.com' in href and href not in social_links['other']:
                     social_links['other'].append(href)
-                elif href not in social_links['other']:
-                    social_links['other'].append(href)
+                else:
+                    # Check if this is actually a social media link before adding to other
+                    is_social = any(social in href for social in [
+                        'behance.net', 'dribbble.com', 'tiktok.com', 'snapchat.com', 
+                        'tumblr.com', 'reddit.com', 'medium.com', 'github.com',
+                        'facebook', 'instagram', 'twitter', 'linkedin', 'pinterest', 'youtube', 'x.com'
+                    ])
+                    if is_social and href not in social_links['other']:
+                        social_links['other'].append(href)
                 
             firm_data['social_links'] = social_links
             
@@ -1053,8 +1060,15 @@ class ArchitizerScraper(BaseScraper):
                         social_links['other'].append(link.get('href'))
                     elif 'dribbble.com' in href and href not in social_links['other']:
                         social_links['other'].append(link.get('href'))
-                    elif href not in social_links['other']:
-                        social_links['other'].append(link.get('href'))
+                    else:
+                        # Check if this is actually a social media link before adding to other
+                        is_social = any(social in href for social in [
+                            'behance.net', 'dribbble.com', 'tiktok.com', 'snapchat.com', 
+                            'tumblr.com', 'reddit.com', 'medium.com', 'github.com',
+                            'facebook', 'instagram', 'twitter', 'linkedin', 'pinterest', 'youtube', 'x.com'
+                        ])
+                        if is_social and href not in social_links['other']:
+                            social_links['other'].append(link.get('href'))
                 
                 firm_data['social_links'] = social_links
             

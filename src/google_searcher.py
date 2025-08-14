@@ -67,37 +67,51 @@ class GoogleSearcher:
             'linkedin': {
                 'domain': 'linkedin.com/in',
                 'name': 'LinkedIn',
-                'keywords': ['linkedin', 'professional', 'business']
+                'keywords': ['linkedin', 'professional', 'business'],
+                'profile_patterns': ['linkedin.com/in/'],
+                'exclude_patterns': ['/posts/', '/feed/', '/pulse/', '/showcase/', '/company/', '/jobs/', '/learning/']
             },
             'facebook': {
                 'domain': 'facebook.com',
                 'name': 'Facebook',
-                'keywords': ['facebook', 'fb']
+                'keywords': ['facebook', 'fb'],
+                'profile_patterns': ['facebook.com/', 'facebook.com/pages/'],
+                'exclude_patterns': ['/posts/', '/photo.php', '/video.php', '/permalink.php', '/story.php', '/photos/', '/videos/']
             },
             'instagram': {
                 'domain': 'instagram.com',
                 'name': 'Instagram',
-                'keywords': ['instagram', 'ig', 'insta']
+                'keywords': ['instagram', 'ig', 'insta'],
+                'profile_patterns': ['instagram.com/'],
+                'exclude_patterns': ['/p/', '/reel/', '/stories/', '/tv/', '/explore/', '/tagged/', '/saved/']
             },
             'twitter': {
                 'domain': 'twitter.com',
                 'name': 'Twitter',
-                'keywords': ['twitter', 'tweet', 'x.com']
+                'keywords': ['twitter', 'tweet', 'x.com'],
+                'profile_patterns': ['twitter.com/'],
+                'exclude_patterns': ['/status/', '/tweet/', '/photo/', '/video/', '/media/', '/favorites/']
             },
             'x': {
                 'domain': 'x.com',
                 'name': 'X (Twitter)',
-                'keywords': ['x.com', 'twitter', 'tweet']
+                'keywords': ['x.com', 'twitter', 'tweet'],
+                'profile_patterns': ['x.com/'],
+                'exclude_patterns': ['/status/', '/tweet/', '/photo/', '/video/', '/media/', '/favorites/']
             },
             'pinterest': {
                 'domain': 'pinterest.com',
                 'name': 'Pinterest',
-                'keywords': ['pinterest', 'pin']
+                'keywords': ['pinterest', 'pin'],
+                'profile_patterns': ['pinterest.com/'],
+                'exclude_patterns': ['/pin/', '/pin_id/', '/pin/']
             },
             'youtube': {
                 'domain': 'youtube.com',
                 'name': 'YouTube',
-                'keywords': ['youtube', 'yt', 'video']
+                'keywords': ['youtube', 'yt', 'video'],
+                'profile_patterns': ['youtube.com/channel/', 'youtube.com/c/', 'youtube.com/user/', 'youtube.com/@'],
+                'exclude_patterns': ['/watch', '/shorts/', '/embed/', '/playlist?', '/results?']
             }
         }
 
@@ -391,6 +405,9 @@ class GoogleSearcher:
             else:
                 logger.info(f"❌ No social media profiles found for {name}")
                 
+            # Log filtering summary
+            logger.info(f"🔍 Social media URL filtering applied: Only main profile/channel URLs included, post URLs excluded")
+                
         except Exception as e:
             logger.error(f"Error searching for social media profiles for {name}: {e}")
         
@@ -421,6 +438,11 @@ class GoogleSearcher:
                         link = item.get("link", "")
                         title = item.get("title", "")
                         snippet = item.get("snippet", "")
+                        
+                        # First filter out post URLs - only keep main profile/channel URLs
+                        if not self._filter_social_media_urls(link, platform):
+                            logger.debug(f"🚫 Filtered out post URL for {platform_info['name']}: {link[:80]}...")
+                            continue
                         
                         # Check if it's a relevant profile for this platform
                         if self._is_relevant_social_profile(link, title, snippet, name, business_variations, professional_type, platform, platform_info):
@@ -1025,3 +1047,75 @@ class GoogleSearcher:
         
         return is_relevant
     
+    def _filter_social_media_urls(self, link: str, platform: str) -> bool:
+        """
+        Filter social media URLs to only include main profile/channel URLs and exclude post URLs.
+        
+        Args:
+            link: The URL to check
+            platform: The social media platform (linkedin, facebook, instagram, etc.)
+            
+        Returns:
+            True if the URL is a main profile/channel URL, False if it's a post URL
+        """
+        if not link:
+            return False
+            
+        link_lower = link.lower()
+        
+        # Get platform info for filtering patterns
+        platform_info = self.social_platforms.get(platform, {})
+        profile_patterns = platform_info.get('profile_patterns', [])
+        exclude_patterns = platform_info.get('exclude_patterns', [])
+        
+        # Check if URL matches any profile patterns (required)
+        matches_profile_pattern = any(pattern in link_lower for pattern in profile_patterns)
+        if not matches_profile_pattern:
+            return False
+            
+        # Check if URL contains any exclude patterns (reject if found)
+        contains_exclude_pattern = any(pattern in link_lower for pattern in exclude_patterns)
+        if contains_exclude_pattern:
+            return False
+            
+        # Additional platform-specific logic for edge cases
+        
+        # LinkedIn: Ensure it's a personal profile, not company page
+        if platform == 'linkedin':
+            # Must contain /in/ for personal profiles
+            if '/in/' not in link_lower:
+                return False
+                
+        # Facebook: Ensure it's not a photo/video post
+        elif platform == 'facebook':
+            # Reject URLs with specific post patterns
+            if any(x in link_lower for x in ['/photo.php', '/video.php', '/permalink.php', '/story.php']):
+                return False
+                
+        # Instagram: Ensure it's not a specific post or story
+        elif platform == 'instagram':
+            # Reject URLs with post/story patterns
+            if any(x in link_lower for x in ['/p/', '/reel/', '/stories/', '/tv/']):
+                return False
+                
+        # Twitter/X: Ensure it's not a specific tweet
+        elif platform in ['twitter', 'x']:
+            # Reject URLs with tweet patterns
+            if any(x in link_lower for x in ['/status/', '/tweet/', '/photo/', '/video/']):
+                return False
+                
+        # Pinterest: Ensure it's not a specific pin
+        elif platform == 'pinterest':
+            # Reject URLs with pin patterns
+            if any(x in link_lower for x in ['/pin/', '/pin_id/']):
+                return False
+                
+        # YouTube: Ensure it's a channel, not a video
+        elif platform == 'youtube':
+            # Must contain channel patterns and not video patterns
+            if not any(x in link_lower for x in ['/channel/', '/c/', '/user/', '/@']):
+                return False
+            if any(x in link_lower for x in ['/watch', '/shorts/', '/embed/']):
+                return False
+                
+        return True

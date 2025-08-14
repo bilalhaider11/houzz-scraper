@@ -863,7 +863,13 @@ class HouzzScraper(BaseScraper):
                                 if cleaned_url not in profile.other_social_links:
                                     profile.other_social_links.append(cleaned_url)
                             elif "blog" in aria or "other" in aria:
-                                if cleaned_url not in profile.other_social_links:
+                                # Check if this is actually a social media link before adding to other_social_links
+                                is_social = any(social in cleaned_url for social in [
+                                    'behance.net', 'dribbble.com', 'tiktok.com', 'snapchat.com', 
+                                    'tumblr.com', 'reddit.com', 'medium.com', 'github.com',
+                                    'facebook', 'instagram', 'twitter', 'linkedin', 'pinterest', 'youtube', 'x.com'
+                                ])
+                                if is_social and cleaned_url not in profile.other_social_links:
                                     profile.other_social_links.append(cleaned_url)
             else:
                 # Fallback to previous logic if section not found
