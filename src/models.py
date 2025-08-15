@@ -6,24 +6,12 @@ All models include proper type hints, validation, and serialization methods.
 
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
-from functools import lru_cache
-from email_validator import validate_email as external_validate_email, EmailNotValidError
 
 # Import phone formatting from phone_formatter for consistency
 try:
     from .phone_formatter import format_us_phone_number
 except ImportError:
     from phone_formatter import format_us_phone_number
-
-# Cache for email validation to improve performance
-@lru_cache(maxsize=1000)
-def _validate_email_cached(email: str) -> Optional[str]:
-    """Cached email validation to avoid repeated validation of same emails."""
-    try:
-        valid = external_validate_email(email)
-        return valid.email
-    except EmailNotValidError:
-        return None
 
 @dataclass
 class ProfessionalProfile:
