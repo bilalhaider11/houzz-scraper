@@ -507,7 +507,7 @@ async def main():
             if output_file:
                 logger.success(f"✅ CSV export completed! File: {output_file}")
             else:
-                logger.error("❌ CSV export failed - no data to export")
+                logger.info("ℹ️  No records to export - all profiles are already completed or none exist")
             return
         
         if output_file:

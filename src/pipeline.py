@@ -100,7 +100,7 @@ class LeadEnrichmentPipeline:
             if output_file:
                 logger.info(f"Exported leads to {output_file}")
             else:
-                logger.error("Failed to export leads")
+                logger.info("No records to export - all profiles are already completed or none exist")
         except Exception as e:
             logger.error(f"Export phase failed: {e}")
             output_file = None
@@ -556,8 +556,13 @@ class LeadEnrichmentPipeline:
             else:
                 logger.info("Email verification disabled - skipping verification step")
             
-            # Step 2: Export all profiles to CSV
+            # Step 2: Check if there are any profiles to export
             total_profiles = db_manager.get_total_profiles_for_export_count(platform=platform)
+            
+            if total_profiles == 0:
+                logger.info(f"No profiles found to export for platform '{platform}' (all profiles are already completed or none exist)")
+                return ""
+            
             batch_size = 1000  # Process in batches of 1000
             all_contacts = []
             exported_profile_ids = []
