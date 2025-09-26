@@ -103,7 +103,9 @@ class HouzzScraper(BaseScraper):
                 # Track pages scraped for this city
                 pages_scraped_this_city = 0
                 
-                for page_num in range(start_page, start_page + max_pages):
+                # Handle case where max_pages might be None
+                max_pages_to_scrape = max_pages if max_pages is not None else 100
+                for page_num in range(start_page, start_page + max_pages_to_scrape):
                     fi_param = (page_num -1) * 15
                     url = f"{base_url}?fi={fi_param}"
                     
@@ -330,7 +332,9 @@ class HouzzScraper(BaseScraper):
                 # Track pages scraped for this city
                 pages_scraped_this_city = 0
                 
-                for page_num in range(start_page, start_page + max_pages):
+                # Handle case where max_pages might be None
+                max_pages_to_scrape = max_pages if max_pages is not None else 100
+                for page_num in range(start_page, start_page + max_pages_to_scrape):
                     fi_param = (page_num -1) * 15
                     url = f"{base_url}?fi={fi_param}"
                     
