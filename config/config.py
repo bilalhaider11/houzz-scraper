@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 @dataclass
@@ -28,7 +29,7 @@ class Config:
     WEBSHARE_API_KEY: Optional[str] = os.getenv('WEBSHARE_API_KEY')
     WEBSHARE_PROXY_LIST: Optional[str] = os.getenv('WEBSHARE_PROXY_LIST')
     USE_PROXY_ROTATION: bool = os.getenv('USE_PROXY_ROTATION', 'false').lower() in ('true', '1', 'yes')
-    PROXY_ROTATION_INTERVAL: int = int(os.getenv('PROXY_ROTATION_INTERVAL', '10'))
+    PROXY_ROTATION_INTERVAL: int = int(os.getenv('PROXY_ROTATION_INTERVAL', '10').strip('"'))
     
     # ============================================================================
     # HOUZZ SETTINGS
@@ -129,8 +130,8 @@ class Config:
     
     # Browser and request settings
     HEADLESS: bool = os.getenv('HEADLESS', 'true').lower() in ('true', '1', 'yes')
-    TIMEOUT: int = int(os.getenv('TIMEOUT', '45'))  # Browser timeout in seconds
-    MAX_PAGES_PER_STATE: int = int(os.getenv('MAX_PAGES_PER_STATE', '50'))  # Limit pages per state
+    TIMEOUT: int = int(os.getenv('TIMEOUT', '45').strip('"'))  # Browser timeout in seconds
+    MAX_PAGES_PER_STATE: int = int(os.getenv('MAX_PAGES_PER_STATE', '50').strip('"'))  # Limit pages per state
     
     # ============================================================================
     # OUTPUT SETTINGS

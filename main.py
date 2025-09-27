@@ -1,43 +1,15 @@
 #!/usr/bin/env python3
 """
-Houzz Lead Generation Pipeline v2.0
-====================================
+FastAPI Application for Houzz Lead Generation Pipeline v2.0
+===========================================================
 
-A production-ready, enterprise-grade 4-phase data scraping and enrichment pipeline that 
-extracts validated leads from Houzz and Architizer across all 50 U.S. states and 7+ professional types.
+A production-ready FastAPI wrapper for the Houzz scraper that exposes HTTP endpoints
+while maintaining all existing functionality and logic.
 
-Key Features:
-- Multi-Platform Support: Houzz and Architizer integration with unified pipeline
-- 4-Phase Pipeline: Platform scraping → Website email mining → Google enrichment → Verification & export
-- ZeroBounce Integration: Production-grade email verification with smart credit management
-- Playwright Automation: JavaScript-heavy website scraping with browser automation
-- Google Custom Search: Finds Gmail addresses and social media profiles
-- Intelligent Email Prioritization: Personal > Business > Generic email selection
-- SQLite Database: Persistent storage with progress tracking and resume capability
-- Anti-Detection: CAPTCHA handling, proxy support, rate limiting, user-agent rotation
-- High Performance: Concurrent processing, efficient database operations, memory optimization
-
-Phase Breakdown:
-    Phase 1: Platform Profile Scraping - Extract professional profiles from Houzz/Architizer
-    Phase 2: Advanced Website Email Mining - Use Playwright to extract emails from professional websites  
-    Phase 3: Google Custom Search Enrichment - Find Gmail addresses and social media profiles via Google API
-    Phase 4: ZeroBounce Verification & CSV Export - Verify emails and export to production-ready CSV
-
-Usage Examples:
-    python3 main.py --platform houzz --list-states                         # List all available US states
-    python3 main.py --platform houzz                                       # Run full 4-phase pipeline (all states)
-    python3 main.py --platform houzz --states california texas             # Run for specific states
-    python3 main.py --platform houzz --no-email-verification               # Skip ZeroBounce verification
-    python3 main.py --platform houzz --phase scrape --states california    # Only scrape Houzz profiles
-    python3 main.py --platform architizer --phase scrape                   # Only scrape Architizer profiles
-    python3 main.py --platform houzz --phase websearch                     # Only run website email mining
-    python3 main.py --platform houzz --phase googlesearch                  # Only run Google search enrichment
-    python3 main.py --platform houzz --phase export                        # Only run verification & export
-    python3 main.py --platform houzz --stats                               # Show scraping statistics
+Usage:
+    uvicorn main:app --host 0.0.0.0 --port 8000
 """
 
-import asyncio
-import argparse
 import sys
 import os
 from pathlib import Path
@@ -48,151 +20,96 @@ from loguru import logger
 SRC_PATH = Path(__file__).parent / "src"
 sys.path.insert(0, str(SRC_PATH))
 
+# FastAPI imports
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+import uvicorn
+
 # Import core modules with error handling
 try:
     from src.pipeline import LeadEnrichmentPipeline  
     from src.database_manager import DatabaseManager
     from config.config import config
 except ImportError as e:
-    print(f"❌ Import error: {e}")
-    print("💡 Make sure you have activated the virtual environment:")
-    print("   source venv/bin/activate")
-    print("💡 And installed all dependencies:")
-    print("   pip install -r requirements.txt")
+    logger.error(f"Import error: {e}")
+    logger.error("Make sure you have activated the virtual environment:")
+    logger.error("   source venv/bin/activate")
+    logger.error("And installed all dependencies:")
+    logger.error("   pip install -r requirements.txt")
     sys.exit(1)
 
-def setup_argument_parser() -> argparse.ArgumentParser:
-    """Setup command line argument parser"""
-    parser = argparse.ArgumentParser(
-        description="Houzz Lead Generation Pipeline v2.0 - Multi-Platform Lead Generation",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python3 main.py --platform houzz --list-states                  # List all available US states
-  python3 main.py --platform houzz --list-cities alabama          # List cities in Alabama
-  python3 main.py --platform houzz                                # Run full pipeline for all states
-  python3 main.py --platform houzz --states california texas      # Specific states only
-  python3 main.py --platform houzz --states wyoming --cities wyoming cheyenne casper  # Specific cities with state
-  python3 main.py --platform houzz --states california --cities "Los Angeles County"  # Specific cities without state
-  python3 main.py --platform houzz --stats                        # Show scraping statistics
-  python3 main.py --platform houzz --phase scrape                 # Only scrape Houzz profiles
-  python3 main.py --platform architizer --phase scrape            # Only scrape Architizer profiles
-  python3 main.py --platform houzz --phase websearch              # Only run website email mining
-  python3 main.py --platform houzz --phase googlesearch           # Only run Google search enrichment
-  python3 main.py --platform houzz --phase export                 # Only export to CSV
-        """
-    )
-    
-    # Execution modes
-    execution_group = parser.add_mutually_exclusive_group(required=False)
-    execution_group.add_argument(
-        '--list-states', 
-        action='store_true',
-        help='List all available US states and exit'
-    )
-    execution_group.add_argument(
-        '--list-cities',
-        type=str,
-        choices=config.US_STATES,
-        help='List cities for a specific state (e.g., alabama, california)'
-    )
-    execution_group.add_argument(
-        '--stats', 
-        action='store_true',
-        help='Show scraping progress statistics and exit'
-    )
-    
-    # Required platform parameter
-    parser.add_argument(
-        '--platform',
-        required=True,
-        choices=['houzz', 'architizer'],
-        help='REQUIRED: Platform to scrape/process (houzz or architizer)'
-    )
-    
-    # Optional parameters
-    parser.add_argument(
-        '--states', 
-        nargs='+',
-        choices=config.US_STATES,
-        help='Specific states to scrape (space-separated)'
-    )
-    
-    parser.add_argument(
-        '--cities',
-        nargs='+',
-        help='Specific cities to scrape (space-separated). Must be used with --states. Format: [state] city1 city2 (e.g., wyoming cheyenne casper or just cheyenne casper). Use --list-cities state to see available cities.'
-    )
-    
-    parser.add_argument(
-        '--professional-types',
-        nargs='+', 
-        choices=config.PROFESSIONAL_TYPES,
-        help='Specific professional types to scrape (space-separated)'
-    )
-    
-    parser.add_argument(
-        '--max-pages',
-        type=int,
-        help='Maximum number of pages to scrape per city (default: 50)'
-    )
-    
-    parser.add_argument(
-        '--start-page',
-        type=int,
-        default=1,
-        help='Starting page number for scraping (default: 1)'
-    )
-    
-    parser.add_argument(
-        '--output-dir',
-        type=str,
-        default=config.OUTPUT_DIR,
-        help='Output directory for CSV files'
-    )
-    
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default='INFO',
-        help='Logging level'
-    )
-    
-    parser.add_argument(
-        '--no-email-verification',
-        action='store_true',
-        help='Skip email verification step'
-    )
-    
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Show what would be scraped without actually scraping'
-    )
-    
-    # Phase-specific execution
-    parser.add_argument(
-        '--phase',
-        choices=['scrape', 'websearch', 'googlesearch', 'export', 'all'],
-        default='all',
-        help='Run specific phase only: scrape=scrape profiles from platform, websearch=scrape websites, googlesearch=Google search enrichment, export=CSV export, all=run everything (default)'
-    )
-    
-    
-    return parser
+# ============================================================================
+# PYDANTIC MODELS FOR REQUEST/RESPONSE SCHEMAS
+# ============================================================================
+
+class ScrapeRequest(BaseModel):
+    """Request model for scraping operations"""
+    platform: str = Field(..., description="Platform to scrape (houzz or architizer)")
+    city: str = Field(..., description="Single city to scrape (e.g., 'chicago-il-us')")
+    professional_type: str = Field(..., description="Single professional type to scrape (e.g., 'interior-designer')")
+    max_pages: Optional[int] = Field(50, description="Maximum number of pages to scrape for this city/profession combination")
+    start_page: int = Field(1, description="Starting page number for scraping")
+    no_email_verification: bool = Field(False, description="Skip email verification step")
+
+class ListCitiesResponse(BaseModel):
+    """Response model for listing cities"""
+    state: str
+    cities: List[Dict[str, str]]
+    total_count: int
+
+class StatsResponse(BaseModel):
+    """Response model for statistics"""
+    stats: Dict[str, Any]
+
+class ScrapeResponse(BaseModel):
+    """Response model for scraping operations"""
+    success: bool
+    message: str
+    output_file: Optional[str] = None
+    profiles_scraped: Optional[int] = None
+    execution_time: Optional[float] = None
+
+class ErrorResponse(BaseModel):
+    """Error response model"""
+    error: str
+    detail: str
+    status_code: int
+
+# ============================================================================
+# FASTAPI APPLICATION
+# ============================================================================
+
+app = FastAPI(
+    title="Houzz Lead Generation Pipeline API",
+    description="Production-ready API for scraping and enriching leads from Houzz and Architizer",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure this for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def validate_environment() -> bool:
-    """Validate environment and return success status.
-    
-    Returns:
-        bool: True if validation passes, False otherwise
-    """
+    """Validate environment and return success status."""
     errors = []
     warnings = []
     
     # Check if virtual environment is activated
     if not hasattr(sys, 'real_prefix') and not (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        warnings.append("Virtual environment not detected - ensure you're using: source venv/bin/activate")
+        warnings.append("Virtual environment not detected")
     
     # Check API keys with detailed feedback
     api_checks = [
@@ -221,11 +138,6 @@ def validate_environment() -> bool:
         except Exception as e:
             errors.append(f"Cannot create or write to {dir_name} '{dir_path}': {e}")
     
-    # Check if .env file exists
-    env_file = Path('.env')
-    if not env_file.exists():
-        warnings.append(".env file not found - copy .env.example to .env and configure your API keys")
-    
     # Report validation results
     for warning in warnings:
         logger.warning(f"⚠️  {warning}")
@@ -240,147 +152,88 @@ def validate_environment() -> bool:
     logger.info("✅ Environment validation passed")
     return True
 
-async def main():
-    """Main function"""
-    parser = setup_argument_parser()
-    args = parser.parse_args()
+def validate_city_and_profession(city: str, professional_type: str) -> tuple:
+    """Validate single city and professional type"""
+    # Validate professional type
+    if professional_type not in config.PROFESSIONAL_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid professional type: {professional_type}. Available types: {config.PROFESSIONAL_TYPES}"
+        )
     
-    # Configure logging level
-    logger.remove()  # Remove default logger
-    logger.add(
-        sys.stderr, 
-        level=args.log_level,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <level>{message}</level>"
-    )
+    # Find which state the city belongs to
+    city_state = None
+    for state, cities in config.STATE_CITY_REGIONS.items():
+        city_infos = [city_info for city_info, _ in cities]
+        if city in city_infos:
+            city_state = state
+            break
     
-    # Validate cities parameter
-    if args.cities:
-        if not args.states:
-            logger.error("❌ --cities parameter requires --states parameter")
-            logger.info("Usage: python3 main.py --platform houzz --states wyoming --cities wyoming cheyenne casper")
-            sys.exit(1)
-        
-        if len(args.states) > 1:
-            logger.error("❌ --cities parameter can only be used with a single state")
-            logger.info("Usage: python3 main.py --platform houzz --states wyoming --cities wyoming cheyenne casper")
-            sys.exit(1)
-        
-        state = args.states[0]
-        if len(args.cities) < 1:
-            logger.error("❌ --cities parameter requires at least one city name")
-            logger.info("Usage: python3 main.py --platform houzz --states wyoming --cities wyoming cheyenne casper")
-            sys.exit(1)
-        
-        # Check if the state name is in the first few elements of cities
-        # This handles cases like "Los Angeles County" where the first word isn't the state
-        state_found = False
-        state_index = -1
-        
-        # Look for the state name in the first few elements
-        for i in range(min(3, len(args.cities))):
-            if args.cities[i].lower() == state.lower():
-                state_found = True
-                state_index = i
+    if not city_state:
+        # Try to find by city name (without state suffix)
+        city_name = city.split('-')[0] if '-' in city else city
+        for state, cities in config.STATE_CITY_REGIONS.items():
+            for city_info, _ in cities:
+                if city_info.startswith(city_name.lower()):
+                    city_state = state
+                    city = city_info  # Use the full city_info format
+                    break
+            if city_state:
                 break
+    
+    if not city_state:
+        # Show available cities for better error message
+        all_cities = []
+        for state, cities in config.STATE_CITY_REGIONS.items():
+            all_cities.extend([city_info for city_info, _ in cities])
         
-        if not state_found:
-            # If state not found in first few elements, assume it's not provided and add it
-            logger.info(f"State '{state}' not found in cities parameter, assuming it's not provided")
-            # Insert the state at the beginning
-            args.cities.insert(0, state)
-            state_index = 0
+        available_preview = ', '.join(all_cities[:10])
+        if len(all_cities) > 10:
+            available_preview += '...'
         
-        # Validate that the cities exist for the given state
+        raise HTTPException(
+            status_code=400,
+            detail=f"City '{city}' not found. Available cities: {available_preview}"
+        )
+    
+    logger.info(f"✅ Validated city '{city}' in state '{city_state}' with profession '{professional_type}'")
+    return city, city_state
+
+# ============================================================================
+# API ENDPOINTS
+# ============================================================================
+
+@app.get("/", response_model=Dict[str, str])
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "message": "Houzz Lead Generation Pipeline API v2.0",
+        "docs": "/docs",
+        "redoc": "/redoc",
+        "status": "running"
+    }
+
+@app.get("/health", response_model=Dict[str, str])
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "message": "API is running"}
+
+@app.get("/list-cities/{state}", response_model=ListCitiesResponse)
+async def list_cities(state: str):
+    """List cities for a specific state"""
+    try:
         if state not in config.STATE_CITY_REGIONS:
-            logger.error(f"❌ No cities found for state '{state}'")
-            sys.exit(1)
-        
-        available_cities = [city_info for city_info, _ in config.STATE_CITY_REGIONS[state]]
-        # Get cities after the state (skip state_index + 1 elements)
-        requested_cities = args.cities[state_index + 1:] if state_index + 1 < len(args.cities) else []
-        
-        if not requested_cities:
-            logger.error("❌ No city names found after the state")
-            logger.info("Usage: python3 main.py --platform houzz --states wyoming --cities wyoming cheyenne casper")
-            sys.exit(1)
-        
-        # Extract city names from the city_info format (e.g., "cheyenne-wy-us" -> "cheyenne")
-        available_city_names = []
-        for city_info in available_cities:
-            city_parts = city_info.split('-')
-            if len(city_parts) > 2:
-                city_name = ' '.join(city_parts[:-2])
-            else:
-                city_name = ' '.join(city_parts[:-1])
-            available_city_names.append(city_name.lower())
-        
-        # Check if requested cities exist
-        invalid_cities = []
-        for city in requested_cities:
-            if city.lower() not in available_city_names:
-                invalid_cities.append(city)
-        
-        if invalid_cities:
-            logger.error(f"❌ Invalid cities for {state}: {invalid_cities}")
-            logger.info(f"Available cities in {state}: {', '.join(available_city_names[:10])}{'...' if len(available_city_names) > 10 else ''}")
-            logger.info("Use --list-cities california to see all available cities")
-            sys.exit(1)
-        
-        logger.info(f"✅ Validated {len(requested_cities)} cities for {state}: {requested_cities}")
-    
-# Handle stats command before any validation
-    if args.stats:
-        logger.info("Fetching scraping progress statistics")
-        try:
-            db_manager = DatabaseManager()
-            stats = db_manager.get_scraping_stats()
-            db_manager.close()
-            
-            if stats:
-                print("\n📊 Scraping Progress Statistics")
-                print("="*40)
-                for key, value in stats.items():
-                    print(f"{key.replace('_', ' ').title()}: {value}")
-            else:
-                print("No statistics available - database may be empty or not initialized.")
-        except Exception as e:
-            logger.error(f"Failed to retrieve statistics: {e}")
-        return
-    
-    # Handle list-states command before any validation
-    if args.list_states:
-        print("\n🏠 Available US States for Houzz Scraping")
-        print("="*50)
-        print(f"Total States: {len(config.US_STATES)}\n")
-        
-        # Display states in a formatted table
-        for i, state in enumerate(sorted(config.US_STATES), 1):
-            formatted_name = state.replace('-', ' ').title()
-            print(f"{i:2d}. {formatted_name:<20} ({state})")
-        
-        print("\n📋 Usage Examples:")
-        print("  python3 main.py --states california texas")
-        print("  python3 main.py --states new-york florida")
-        print("  python3 main.py --states texas  # Single state")
-        print("\n💡 Tip: Use the values in parentheses for the --states parameter")
-        return
-    
-    # Handle list-cities command before any validation
-    if args.list_cities:
-        state = args.list_cities
-        if state not in config.STATE_CITY_REGIONS:
-            print(f"❌ Error: No cities found for state '{state}'")
-            return
+            raise HTTPException(
+                status_code=404,
+                detail=f"No cities found for state '{state}'"
+            )
         
         cities = config.STATE_CITY_REGIONS[state]
         formatted_state = state.replace('-', ' ').title()
         
-        print(f"\n🏙️  Cities in {formatted_state}")
-        print("="*50)
-        print(f"Total Cities: {len(cities)}\n")
-        
-        # Display cities in a formatted table
-        for i, (city_info, region_id) in enumerate(cities, 1):
+        # Format cities for response
+        formatted_cities = []
+        for city_info, region_id in cities:
             # Extract city name from the city_info (format: "city-name-state-us")
             city_parts = city_info.split('-')
             if len(city_parts) > 2:
@@ -390,165 +243,315 @@ async def main():
                 # Only remove the last part (country)
                 city_name = ' '.join(city_parts[:-1])
             city_name = city_name.replace('-', ' ').title()
-            print(f"{i:2d}. {city_name:<30} (Region ID: {region_id})")
+            formatted_cities.append({
+                "name": city_name,
+                "region_id": region_id,
+                "city_info": city_info
+            })
         
-        print(f"\n📋 Usage Examples:")
-        print(f"  python3 main.py --platform houzz --states {state}")
-        print(f"  python3 main.py --platform houzz --states {state} --professional-types interior-designer")
-        print(f"\n💡 Tip: Use the state name '{state}' with the --states parameter")
-        return
-    
-    logger.info(f"Starting {args.platform} Lead Generation Pipeline")
-    logger.info(f"Arguments: {vars(args)}")
-    
-    # Validate environment
-    if not validate_environment():
-        logger.error("Environment validation failed. Please fix the issues above and try again.")
-        sys.exit(1)
-    
-    # Handle dry run
-    if args.dry_run:
-        logger.info("🔍 DRY RUN MODE - No actual scraping will be performed")
-        states = args.states or config.US_STATES
-        prof_types = args.professional_types or config.PROFESSIONAL_TYPES
-        
-        logger.info(f"📍 Would scrape {len(states)} states: {states[:5]}{'...' if len(states) > 5 else ''}")
-        logger.info(f"👷 Would scrape {len(prof_types)} professional types: {prof_types}")
-        
-        logger.info("🚀 Would run full production scraping")
-        estimated_profiles = len(states) * len(prof_types) * config.MAX_PAGES_PER_STATE * 20  # ~20 per page
-        logger.info(f"📊 Estimated profiles to scrape: {estimated_profiles:,}")
-        
-        logger.success("✅ Dry run completed successfully")
-        return
-    
-    # Initialize pipeline
-    try:
-        pipeline = LeadEnrichmentPipeline()
+        return ListCitiesResponse(
+            state=formatted_state,
+            cities=formatted_cities,
+            total_count=len(formatted_cities)
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to initialize pipeline: {e}")
-        logger.error("Please check your configuration and try again.")
-        sys.exit(1)
+        logger.error(f"Error listing cities for {state}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list cities: {str(e)}")
+
+@app.get("/list-professional-types", response_model=Dict[str, Any])
+async def list_professional_types():
+    """List all available professional types for scraping"""
+    try:
+        return {
+            "professional_types": config.PROFESSIONAL_TYPES,
+            "total_count": len(config.PROFESSIONAL_TYPES),
+            "descriptions": {
+                "interior-designer": "Interior Designer",
+                "architect": "Architect", 
+                "general-contractor": "General Contractor",
+                "design-build": "Design-Build",
+                "landscape-architect": "Landscape Architect",
+                "kitchen-and-bath": "Kitchen & Bath Designer",
+                "home-builders": "Home Builder"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error listing professional types: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list professional types: {str(e)}")
+
+@app.get("/list-all-cities", response_model=Dict[str, Any])
+async def list_all_cities():
+    """List all available cities across all states"""
+    try:
+        all_cities = []
+        for state, cities in config.STATE_CITY_REGIONS.items():
+            for city_info, region_id in cities:
+                # Extract city name from the city_info
+                city_parts = city_info.split('-')
+                if len(city_parts) > 2:
+                    city_name = ' '.join(city_parts[:-2])
+                else:
+                    city_name = ' '.join(city_parts[:-1])
+                city_name = city_name.replace('-', ' ').title()
+                
+                all_cities.append({
+                    "city_info": city_info,
+                    "city_name": city_name,
+                    "state": state,
+                    "region_id": region_id
+                })
+        
+        return {
+            "cities": all_cities,
+            "total_count": len(all_cities),
+            "states": list(config.STATE_CITY_REGIONS.keys())
+        }
+    except Exception as e:
+        logger.error(f"Error listing all cities: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list all cities: {str(e)}")
+
+@app.get("/stats", response_model=StatsResponse)
+async def get_stats(platform: Optional[str] = None):
+    """Get scraping progress statistics
+    
+    Args:
+        platform: Optional platform filter ('houzz' or 'architizer'). 
+                 If not provided, returns combined stats for all platforms.
+    """
+    try:
+        db_manager = DatabaseManager()
+        
+        if platform:
+            # Validate platform
+            if platform not in ['houzz', 'architizer']:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Platform must be 'houzz' or 'architizer'"
+                )
+            stats = db_manager.get_scraping_stats(platform)
+        else:
+            # Get stats for all platforms combined
+            houzz_stats = db_manager.get_scraping_stats('houzz')
+            architizer_stats = db_manager.get_scraping_stats('architizer')
+            
+            # Combine stats
+            stats = {
+                'houzz': houzz_stats,
+                'architizer': architizer_stats,
+                'total': {
+                    'total_profiles': (houzz_stats.get('total_profiles', 0) or 0) + (architizer_stats.get('total_profiles', 0) or 0),
+                    'websites_scraped': (houzz_stats.get('websites_scraped', 0) or 0) + (architizer_stats.get('websites_scraped', 0) or 0),
+                    'google_searches_done': (houzz_stats.get('google_searches_done', 0) or 0) + (architizer_stats.get('google_searches_done', 0) or 0),
+                    'completed_profiles': (houzz_stats.get('completed_profiles', 0) or 0) + (architizer_stats.get('completed_profiles', 0) or 0),
+                    'websites_pending': (houzz_stats.get('websites_pending', 0) or 0) + (architizer_stats.get('websites_pending', 0) or 0),
+                    'google_searches_pending': (houzz_stats.get('google_searches_pending', 0) or 0) + (architizer_stats.get('google_searches_pending', 0) or 0),
+                    'profiles_pending_completion': (houzz_stats.get('profiles_pending_completion', 0) or 0) + (architizer_stats.get('profiles_pending_completion', 0) or 0)
+                }
+            }
+        
+        db_manager.close()
+        
+        if not stats:
+            stats = {"message": "No statistics available - database may be empty or not initialized"}
+        
+        return StatsResponse(stats=stats)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
+
+@app.get("/proxy-status", response_model=Dict[str, Any])
+async def get_proxy_status():
+    """Get proxy rotation status and statistics"""
+    try:
+        # Create a temporary scraper instance to get proxy stats
+        from src.houzz_scraper import HouzzScraper
+        
+        # Initialize scraper to get proxy information
+        scraper = HouzzScraper()
+        
+        proxy_stats = {
+            'proxy_rotation_enabled': config.USE_PROXY_ROTATION,
+            'proxy_rotation_interval': config.PROXY_ROTATION_INTERVAL,
+            'proxy_username_configured': bool(config.PROXY_USERNAME),
+            'proxy_password_configured': bool(config.PROXY_PASSWORD),
+            'webshare_proxy_list_configured': bool(config.WEBSHARE_PROXY_LIST)
+        }
+        
+        if config.USE_PROXY_ROTATION and scraper.proxy_list:
+            proxy_stats.update(scraper.get_proxy_stats())
+        else:
+            proxy_stats.update({
+                'message': 'Proxy rotation is disabled or no proxies configured',
+                'total_proxies': 0
+            })
+        
+        return proxy_stats
+        
+    except Exception as e:
+        logger.error(f"Error getting proxy status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get proxy status: {str(e)}")
+
+@app.post("/scrape", response_model=ScrapeResponse)
+async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
+    """Main scraping endpoint that runs the pipeline for a single city and profession"""
+    import time
+    start_time = time.time()
     
     try:
-        # Determine execution parameters
-        states = args.states
-        max_profiles = None
+        # Validate platform
+        if request.platform not in ['houzz', 'architizer']:
+            raise HTTPException(
+                status_code=400,
+                detail="Platform must be 'houzz' or 'architizer'"
+            )
+        
+        # Validate city and professional type
+        validated_city, city_state = validate_city_and_profession(request.city, request.professional_type)
+        
+        # Validate environment
+        if not validate_environment():
+            raise HTTPException(
+                status_code=500,
+                detail="Environment validation failed. Please check configuration and try again."
+            )
+        
+        # Initialize pipeline
+        try:
+            pipeline = LeadEnrichmentPipeline()
+        except Exception as e:
+            logger.error(f"Failed to initialize pipeline: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to initialize pipeline: {str(e)}"
+            )
         
         # Determine email verification setting
-        verify_emails = not args.no_email_verification
+        verify_emails = not request.no_email_verification
         if not verify_emails:
-            logger.info("Email verification disabled by command line argument")
+            logger.info("Email verification disabled by request parameter")
         else:
             logger.info("Email verification enabled (default)")
         
-        # Run the pipeline based on phase with optimized execution
-        logger.info(f"🚀 Executing pipeline phase: {args.phase}")
+        # Run the complete pipeline for single city and profession
+        logger.info(f"🚀 Starting {request.platform} pipeline for {validated_city} - {request.professional_type}")
         
-        # Define platform-specific scraping function
-        async def scrape_platform():
-            if args.platform == "houzz":
-                return await pipeline.scrape_houzz_profiles(
-                    states=states, 
-                    professional_types=args.professional_types,
-                    max_pages=args.max_pages,
-                    start_page=args.start_page,
-                    max_profiles=max_profiles,
-                    cities=args.cities
-                )
-            elif args.platform == "architizer":
-                return await pipeline.scrape_architizer_profiles(
-                    max_pages=args.max_pages,
-                    start_page=args.start_page
-                )
-            else:
-                raise ValueError(f"Unsupported platform: {args.platform}")
+        # Execute the full pipeline with single city and profession
+        output_file = await pipeline.run_full_pipeline(
+            city=validated_city,
+            city_state=city_state,
+            professional_type=request.professional_type,
+            max_pages=request.max_pages,
+            start_page=request.start_page,
+            verify_emails=verify_emails,
+            platform=request.platform
+        )
         
-        # Phase execution mapping for better maintainability
-        phase_handlers = {
-            'scrape': scrape_platform,
-            'websearch': lambda: pipeline.run_websearch_phase(platform=args.platform),
-            'googlesearch': lambda: pipeline.run_google_search_phase(platform=args.platform),
-            'export': lambda: pipeline.run_export_phase(verify_emails=verify_emails, platform=args.platform),
-            'all': lambda: pipeline.run_full_pipeline(
-                states=states, 
-                professional_types=args.professional_types,
-                max_pages=args.max_pages,
-                start_page=args.start_page,
-                max_profiles=max_profiles,
-                verify_emails=verify_emails,
-                platform=args.platform,
-                cities=args.cities
-            )
-        }
-        
-        # Execute the selected phase
-        phase_handler = phase_handlers.get(args.phase)
-        if not phase_handler:
-            logger.error(f"Unknown phase: {args.phase}")
-            sys.exit(1)
-        
-        # Run the phase and handle results
-        output_file = await phase_handler()
-        
-        # Handle phase-specific success messages
-        phase_success_messages = {
-            'scrape': f"✅ {args.platform.capitalize()} scraping phase completed!",
-            'websearch': "✅ Website scraping phase completed!",
-            'googlesearch': "✅ Google search enrichment phase completed!",
-            'export': "✅ CSV export completed!",
-            'all': "✅ Full pipeline completed!"
-        }
-        
-        if args.phase in ['scrape', 'websearch', 'googlesearch']:
-            logger.success(phase_success_messages[args.phase])
-            return
-        elif args.phase == 'export':
-            if output_file:
-                logger.success(f"✅ CSV export completed! File: {output_file}")
-            else:
-                logger.info("ℹ️  No records to export - all profiles are already completed or none exist")
-            return
+        execution_time = time.time() - start_time
         
         if output_file:
-            logger.success(f"Pipeline completed successfully!")
-            logger.success(f"Output file: {output_file}")
-            
-            # Generate and display report
-            logger.info("Generating summary report...")
-            # Note: In production, you might want to load the contacts from the CSV for reporting
-            # For now, we'll just show the file location
-            
-            print("\n" + "="*60)
-            print("🎉 HOUZZ LEAD GENERATION COMPLETED")
-            print("="*60)
-            print(f"📄 Output file: {output_file}")
-            print(f"📊 Check logs in: {config.LOG_DIR}")
-            print("="*60)
+            message = f"✅ {request.platform.capitalize()} pipeline completed successfully for {validated_city} - {request.professional_type}!"
+            return ScrapeResponse(
+                success=True,
+                message=message,
+                output_file=output_file,
+                execution_time=execution_time
+            )
         else:
-            logger.error("Pipeline completed but no output file was generated")
-            sys.exit(1)
+            raise HTTPException(
+                status_code=500,
+                detail="Pipeline completed but no output file was generated"
+            )
             
-    except KeyboardInterrupt:
-        logger.warning("Pipeline interrupted by user")
-        logger.info("Progress has been saved.")
-        sys.exit(0)
-    
+    except HTTPException:
+        raise
     except Exception as e:
-        # Check if this is a Google API quota limit error
-        error_str = str(e).lower()
-        if any(keyword in error_str for keyword in ['quota', 'rate limit', '429', '403', 'google']):
-            logger.warning(f"Google API limit reached: {e}")
-            logger.info("Continuing with pipeline - Google search enrichment will be skipped")
-            # Don't exit, just log and continue
-        else:
-            logger.error(f"Pipeline failed with error: {e}")
-            logger.exception("Full error traceback:")
-            sys.exit(1)
+        execution_time = time.time() - start_time
+        logger.error(f"Pipeline failed with error: {e}")
+        logger.exception("Full error traceback:")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pipeline failed: {str(e)}"
+        )
+
+# ============================================================================
+# ERROR HANDLERS
+# ============================================================================
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Custom HTTP exception handler"""
+    logger.warning(f"HTTP exception: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            error=exc.detail,
+            detail=exc.detail,
+            status_code=exc.status_code
+        ).dict()
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """General exception handler"""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(
+            error="Internal server error",
+            detail="An unexpected error occurred. Please try again later.",
+            status_code=500
+        ).dict()
+    )
+
+# ============================================================================
+# APPLICATION STARTUP
+# ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Application startup event"""
+    logger.info("🚀 Starting Houzz Lead Generation Pipeline API v2.0")
+    logger.info("📚 API Documentation available at: /docs")
+    logger.info("🔧 ReDoc available at: /redoc")
+    
+    # Validate environment on startup
+    if validate_environment():
+        logger.info("✅ Environment validation passed on startup")
+    else:
+        logger.warning("⚠️  Environment validation failed on startup - some features may not work")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Application shutdown event"""
+    logger.info("🛑 Shutting down Houzz Lead Generation Pipeline API")
+
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n\nScraping interrupted by user. Progress has been saved.")
-        sys.exit(0)
+    import os
+    
+    # Configure logging
+    logger.remove()  # Remove default logger
+    logger.add(
+        sys.stderr, 
+        level="INFO",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <level>{message}</level>"
+    )
+    
+    # Get port from environment (Cloud Run uses PORT env var)
+    port = int(os.getenv("PORT", 8000))
+    
+    # Run the application
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,  # Set to True for development
+        log_level="info"
+    )

@@ -1,8 +1,8 @@
-# 🏠 Houzz Lead Generation Pipeline v1.0
+# 🏠 Houzz Lead Generation Pipeline v2.0 - FastAPI Application
 
-**Latest Update: August 2025** - Complete rewrite with multi-platform support, advanced 4-phase pipeline, and enterprise-grade features
+**Latest Update: September 2025** - Complete FastAPI refactoring with HTTP endpoints for all scraping functionality
 
-A production-ready, enterprise-grade 4-phase data scraping and enrichment pipeline that extracts validated leads from **Houzz** and **Architizer** across all 50 U.S. states and 7+ professional types. Features advanced ZeroBounce integration, Google Custom Search enrichment, Playwright-based website mining, and intelligent email prioritization.
+A production-ready FastAPI application for scraping and enriching leads from **Houzz** and **Architizer** across all 50 U.S. states and 7+ professional types. Features advanced ZeroBounce integration, Google Custom Search enrichment, Playwright-based website mining, and intelligent email prioritization - all accessible through HTTP endpoints.
 
 ## ✨ Core Features
 
@@ -113,17 +113,66 @@ git --version
 
 ## 🚀 Quick Start
 
-### 1. Setup Environment
+### Option 1: Docker (Recommended - No venv needed)
+
+Docker provides complete isolation, so you don't need a virtual environment:
 
 ```bash
 # Clone and navigate to the project
 git clone <repository-url>
 cd houzz-scraper
 
-# Run the deployment script
-chmod +x deploy.sh
-./deploy.sh
+# Copy environment template
+cp env.example .env
+
+# Edit .env with your API keys (optional)
+nano .env
+
+# Build and run with Docker
+docker build -t houzz-scraper .
+docker run -p 8000:8000 --env-file .env houzz-scraper
+
+# Test the API
+curl http://localhost:8000/health
+
+# Access the API at http://localhost:8000/docs
 ```
+
+**Note**: Docker handles all dependencies and isolation - no venv needed!
+
+### Option 2: Local Development (venv required)
+
+For local development outside Docker, you need a virtual environment:
+
+```bash
+# Clone and navigate to the project
+git clone <repository-url>
+cd houzz-scraper
+
+# Create virtual environment (required for local development)
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+playwright install chromium
+
+# Copy environment template
+cp env.example .env
+
+# Edit .env with your API keys (optional)
+nano .env
+
+# Start the API server
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Test the API
+curl http://localhost:8000/health
+
+# Access the API at http://localhost:8000/docs
+```
+
+**Note**: Use Docker for production and local testing. Use venv only for development.
 
 ### 2. Configure API Keys
 
@@ -131,7 +180,7 @@ chmod +x deploy.sh
 
 ```bash
 # Copy the example environment file
-cp .env.example .env
+cp env.example .env
 
 # Edit the .env file with your actual API keys
 nano .env
@@ -146,9 +195,9 @@ nano .env
 - Without ZeroBounce: Basic email validation only (use `--no-email-verification`)
 - Without Google APIs: No Gmail discovery or social media profile enrichment
 
-### 3. Activate Virtual Environment
+### 3. Activate Virtual Environment (Local Installation Only)
 
-**IMPORTANT**: Always activate the virtual environment before running any commands:
+**IMPORTANT**: For local installation (without Docker), always activate the virtual environment before running any commands:
 
 ```bash
 # Activate the virtual environment
@@ -158,68 +207,89 @@ source venv/bin/activate
 # (venv) user@hostname:~/houzz-scraper$
 ```
 
-### 4. List Available States
+### 4. Start the API Server
 
+**For Docker users:**
+```bash
+# Build and run with Docker (no virtual environment needed)
+docker build -t houzz-scraper .
+docker run -p 8000:8000 --env-file .env houzz-scraper
+```
+
+**For local installation:**
 ```bash
 # Make sure virtual environment is activated first!
 source venv/bin/activate
-python3 main.py --platform houzz --list-states
+
+# Start the FastAPI server
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### 5. List Available Cities
+**The API will be available at:**
+- API Documentation: http://localhost:8000/docs
+- ReDoc Documentation: http://localhost:8000/redoc
+- Health Check: http://localhost:8000/health
+
+### 5. Test the API
 
 ```bash
-# List all cities in a specific state
-python3 main.py --platform houzz --list-cities california
+# List available states
+curl http://localhost:8000/list-states
 
-# List cities in other states
-python3 main.py --platform houzz --list-cities texas
-python3 main.py --platform houzz --list-cities new-york
-python3 main.py --platform houzz --list-cities florida
+# List cities in California
+curl http://localhost:8000/list-cities/california
 
-# Example output for California:
-# 🏙️  Cities in California
-# ==================================================
-# Total Cities: 18
-# 
-#  1. Los Angeles County             (Region ID: r_5368381)
-#  2. Los Angeles                    (Region ID: r_5368361)
-#  3. Brentwood Los Angeles          (Region ID: r_101182514)
-#  4. Bel Air                        (Region ID: r_101182513)
-#  5. Hollywood                      (Region ID: r_101182515)
-#  ... and more cities
+# Get scraping statistics
+curl http://localhost:8000/stats
+
+# Run a test scrape
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california"],
+    "professional_types": ["interior-designer"],
+    "max_pages": 5
+  }'
 ```
 
-### 6. Test Run
+### 6. Production Usage
 
 ```bash
-# Dry run to see what would be scraped
-python3 main.py --platform houzz --dry-run --states california
-
-# Test specific states with limited pages
-python3 main.py --platform houzz --states california texas --max-pages 5
-
-# Test Architizer platform
-python3 main.py --platform architizer --phase scrape --max-pages 3
-```
-
-### 6. Production Run
-
-```bash
-# Full production pipeline (all 4 phases, all states, Houzz platform)
-python3 main.py --platform houzz
+# Full production pipeline (all states, Houzz platform)
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california", "texas", "florida"]
+  }'
 
 # Specific states with ZeroBounce verification
-python3 main.py --platform houzz --states california texas florida
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california", "texas"],
+    "professional_types": ["interior-designer", "architect"],
+    "max_pages": 25
+  }'
 
 # Skip ZeroBounce verification (faster, uses basic validation)
-python3 main.py --platform houzz --states california --no-email-verification
-
-# Custom scraping parameters
-python3 main.py --platform houzz --states california --max-pages 25 --start-page 1
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california"],
+    "no_email_verification": true
+  }'
 
 # Architizer platform
-python3 main.py --platform architizer --phase scrape --max-pages 10
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "architizer",
+    "max_pages": 10
+  }'
 ```
 
 ## 🔄 4-Phase Pipeline Process
@@ -234,13 +304,23 @@ The Lead Generation Pipeline operates in 4 distinct phases, each designed for op
 - Stores all profiles in SQLite database for persistence and progress tracking
 - Supports resume capability if interrupted
 
-**Commands:**
+**API Call:**
 ```bash
 # Houzz platform
-python3 main.py --platform houzz --phase scrape --states california texas
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california", "texas"]
+  }'
 
 # Architizer platform
-python3 main.py --platform architizer --phase scrape --max-pages 10
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "architizer",
+    "max_pages": 10
+  }'
 ```
 
 **Output:** Database populated with professional profiles and basic contact information.
@@ -256,12 +336,7 @@ python3 main.py --platform architizer --phase scrape --max-pages 10
 - Handles JavaScript-heavy sites and various email formats
 - Extracts phone numbers from websites (Architizer platform)
 
-**Command:**
-```bash
-python3 main.py --platform houzz --phase websearch
-# or
-python3 main.py --platform architizer --phase websearch
-```
+**Note:** This phase runs automatically as part of the complete pipeline.
 
 **Output:** Enhanced profiles with personal and business emails extracted from professional websites.
 
@@ -279,12 +354,7 @@ python3 main.py --platform architizer --phase websearch
 - Applies intelligent deduplication and prioritization
 - Finds zipcodes and additional location data
 
-**Command:**
-```bash
-python3 main.py --platform houzz --phase googlesearch
-# or
-python3 main.py --platform architizer --phase googlesearch
-```
+**Note:** This phase runs automatically as part of the complete pipeline.
 
 **Output:** Profiles further enriched with Gmail addresses, social media profile URLs, and location data.
 
@@ -312,14 +382,7 @@ python3 main.py --platform architizer --phase googlesearch
 - Creates production-ready lead files for immediate outreach use
 - Platform-specific column ordering and data formatting
 
-**Commands:**
-```bash
-# With ZeroBounce verification (default)
-python3 main.py --platform houzz --phase export
-
-# Skip verification to save API credits
-python3 main.py --platform houzz --phase export --no-email-verification
-```
+**Note:** This phase runs automatically as part of the complete pipeline. Use `no_email_verification: true` to skip email verification.
 
 **Output:** Production-ready CSV file with verified leads and comprehensive contact data.
 
@@ -327,20 +390,39 @@ python3 main.py --platform houzz --phase export --no-email-verification
 
 ### 🚀 Complete Pipeline Execution
 
-Run all 4 phases in sequence for end-to-end lead generation:
+Run the complete pipeline for end-to-end lead generation:
 
 ```bash
 # Full pipeline with ZeroBounce verification (Houzz)
-python3 main.py --platform houzz --states california texas
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california", "texas"]
+  }'
 
 # Full pipeline without verification (faster, basic validation only)
-python3 main.py --platform houzz --states california texas --no-email-verification
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california", "texas"],
+    "no_email_verification": true
+  }'
 
 # All states, all professional types (Houzz)
-python3 main.py --platform houzz
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz"
+  }'
 
 # Architizer platform
-python3 main.py --platform architizer
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "architizer"
+  }'
 ```
 
 **Phase Execution Order:**
@@ -359,44 +441,70 @@ python3 main.py --platform architizer
 ### Basic Usage
 ```bash
 # Production run for all states (Houzz)
-python3 main.py --platform houzz
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz"
+  }'
 
 # Specific states only
-python3 main.py --platform houzz --states california texas florida
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california", "texas", "florida"]
+  }'
 
 # Control scraping parameters
-python3 main.py --platform houzz --states florida --max-pages 10 --start-page 1
-
-# Run specific phases
-python3 main.py --platform houzz --phase export  # Export existing data to CSV
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["florida"],
+    "max_pages": 10,
+    "start_page": 1
+  }'
 ```
 
 ### Advanced Options
 ```bash
 # Skip email verification (faster)
-python3 main.py --platform houzz --no-email-verification
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "no_email_verification": true
+  }'
 
 # Specific professional types (Houzz only)
-python3 main.py --platform houzz --professional-types interior-designer architect
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "professional_types": ["interior-designer", "architect"]
+  }'
 
 # Custom scraping parameters
-python3 main.py --platform houzz --states california --max-pages 15 --start-page 3
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "states": ["california"],
+    "max_pages": 15,
+    "start_page": 3
+  }'
 
 # Architizer platform with pagination
-python3 main.py --platform architizer --phase scrape --start-page 1 --max-pages 5
-python3 main.py --platform architizer --phase scrape --start-page 11 --max-pages 10  # Pages 11-20
-
-# Custom output directory
-python3 main.py --platform houzz --output-dir /path/to/output
-
-# Debug mode
-python3 main.py --platform houzz --log-level DEBUG
-
-# Dry run (see what would be scraped)
-python3 main.py --platform houzz --dry-run
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "architizer",
+    "start_page": 1,
+    "max_pages": 5
+  }'
 
 # Check scraping progress statistics
-python3 main.py --platform houzz --stats
+curl http://localhost:8000/stats
 ```
 
 ### Platform-Specific Pagination
@@ -405,23 +513,52 @@ python3 main.py --platform houzz --stats
 Houzz uses URL-based pagination with `?fi=` parameters:
 ```bash
 # Scrape first 10 pages (pages 1-10)
-python3 main.py --platform houzz --start-page 1 --max-pages 10
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "start_page": 1,
+    "max_pages": 10
+  }'
 
 # Scrape pages 11-20
-python3 main.py --platform houzz --start-page 11 --max-pages 10
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "houzz",
+    "start_page": 11,
+    "max_pages": 10
+  }'
 ```
 
 #### Architizer Pagination
 Architizer uses infinite scroll with "Load More" button clicks:
 ```bash
 # Scrape first 5 pages (load 4 more times after initial page)
-python3 main.py --platform architizer --start-page 1 --max-pages 5
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "architizer",
+    "start_page": 1,
+    "max_pages": 5
+  }'
 
 # Scrape pages 11-15 (load 10 times to reach page 11, then scrape 5 pages)
-python3 main.py --platform architizer --start-page 11 --max-pages 5
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "architizer",
+    "start_page": 11,
+    "max_pages": 5
+  }'
 
 # Scrape all available pages (no max_pages limit)
-python3 main.py --platform architizer --start-page 1
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "architizer",
+    "start_page": 1
+  }'
 ```
 
 ## 💾 Data Persistence: SQLite Database
@@ -499,10 +636,15 @@ FROM professionals;
 
 ```
 houzz-scraper/
-├── main.py                 # Main executable script
+├── main.py                 # FastAPI application (main entry point)
 ├── requirements.txt        # Python dependencies
 ├── deploy.sh              # Deployment script
-├── .env.example           # Environment variables template (copy to .env)
+├── env.example            # Environment variables template (copy to .env)
+├── test_fastapi.py        # API test script
+├── README.md              # Complete documentation (single source of truth)
+├── Dockerfile             # Docker container configuration
+├── .dockerignore          # Docker ignore file
+├── cloudbuild.yaml        # Google Cloud Build configuration
 ├── config/
 │   └── config.py          # Configuration settings
 ├── src/
@@ -522,8 +664,50 @@ houzz-scraper/
 │   └── common_utils.py    # Common utilities
 ├── data/                  # Output CSV files and SQLite database
 │   └── scraper.db         # SQLite database (created automatically)
-├── logs/                  # Log files
-└── venv/                  # Python virtual environment
+└── logs/                  # Log files
+```
+
+## 🐳 Docker Deployment
+
+### Local Docker
+
+```bash
+# Copy environment template
+cp env.example .env
+
+# Edit with your API keys
+nano .env
+
+# Build and run
+docker build -t houzz-scraper .
+docker run -p 8000:8000 --env-file .env houzz-scraper
+
+# Access API at http://localhost:8000/docs
+```
+
+### Google Cloud Run Deployment
+
+```bash
+# Set your project ID
+export PROJECT_ID=your-project-id
+
+# Build and push to Google Container Registry
+docker build -t gcr.io/$PROJECT_ID/houzz-scraper .
+docker push gcr.io/$PROJECT_ID/houzz-scraper
+
+# Deploy to Cloud Run
+gcloud run deploy houzz-scraper \
+  --image gcr.io/$PROJECT_ID/houzz-scraper \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --memory 2Gi \
+  --cpu 2 \
+  --timeout 3600 \
+  --set-env-vars "HEADLESS=true,TIMEOUT=60,MAX_PAGES_PER_STATE=50"
+
+# Or use Cloud Build for automated deployment
+gcloud builds submit --config cloudbuild.yaml
 ```
 
 ## 🔧 Configuration
@@ -703,10 +887,11 @@ https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":
    - Solution: Run `playwright install chromium`
 
 3. **"Module not found"**
-   - Solution: Ensure virtual environment is activated: `source venv/bin/activate`
+   - Solution: For local installation, ensure virtual environment is activated: `source venv/bin/activate`
+   - For Docker: Ensure you're running the container with the correct image
 
 4. **"Environment file not found"**
-   - Solution: Copy `.env.example` to `.env` and configure your API keys
+   - Solution: Copy `env.example` to `.env` and configure your API keys
 
 5. **"Rate limit exceeded"**
    - Solution: Increase delays in config or use proxy service
@@ -714,15 +899,10 @@ https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":
 6. **"Database locked"**
    - Solution: Ensure no other processes are accessing the database
 
-### Debug Mode
-```bash
-python3 main.py --platform houzz --log-level DEBUG
-```
-
 ### Check System Status
 ```bash
 # Check scraping progress
-python3 main.py --platform houzz --stats
+curl http://localhost:8000/stats
 
 # Check database status
 sqlite3 data/scraper.db "SELECT COUNT(*) FROM professionals;"

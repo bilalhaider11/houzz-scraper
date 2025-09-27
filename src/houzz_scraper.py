@@ -638,6 +638,10 @@ class HouzzScraper(BaseScraper):
                     error_str = str(goto_error).lower()
                     if any(err in error_str for err in ['net::err_network_changed', 'connection', 'timeout', 'tunnel_connection_failed', 'proxy']):
                         logger.warning(f"Network/proxy error detected in profile scraping, forcing context rotation: {goto_error}")
+                        
+                        # Handle network error
+                        self._handle_network_error()
+                        
                         # Force context rotation by closing current context
                         try:
                             if page:
@@ -645,11 +649,6 @@ class HouzzScraper(BaseScraper):
                             if self.current_context:
                                 await self.current_context.close()
                             self.current_context = None
-                            
-                            # Try next proxy immediately on tunnel connection failure
-                            if 'tunnel_connection_failed' in error_str:
-                                logger.warning("Tunnel connection failed - rotating to next proxy")
-                                self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
                             
                             # Create new page with fresh context
                             page = await self.create_or_rotate_page()

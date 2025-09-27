@@ -161,9 +161,8 @@ phone_utils = CommonPhoneUtils()
 web_utils = CommonWebUtils()
 zipcode_utils = CommonZipcodeUtils()
 
-class WebUtils(CommonWebUtils):
-    """Alias for CommonWebUtils for backward compatibility"""
-    pass
+# Alias for backward compatibility
+WebUtils = CommonWebUtils
 
 
 class StateManager:

@@ -7,7 +7,7 @@ and ensure consistent behavior across different scraping modules.
 import asyncio
 import random
 from typing import List, Optional, Dict, Any
-from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+from playwright.async_api import Page, Browser
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 
@@ -38,6 +38,9 @@ class BaseScraper:
         self.current_delay = 3.0  # Start with 3 second delay
         self.max_delay = 30.0    # Max 30 second delay
         self.success_count = 0   # Track consecutive successes
+        
+        # Simple proxy rotation tracking
+        self.proxy_rotation_count = 0
 
     def _get_proxy_list(self) -> List[str]:
         """Load proxies from config"""
@@ -71,22 +74,19 @@ class BaseScraper:
         }
 
     def rotate_proxy(self):
-        """Rotate to a random proxy in the list, avoiding the last selected one"""
-        if self.proxy_list:
-            # If we have more than one proxy, avoid selecting the same one twice
-            if len(self.proxy_list) > 1:
-                # Create a list of available indices excluding the last selected one
-                available_indices = [i for i in range(len(self.proxy_list)) if i != self.last_proxy_index]
-                self.current_proxy_index = random.choice(available_indices)
-            else:
-                # If only one proxy, just use it
-                self.current_proxy_index = 0
+        """Rotate to the next proxy in the list"""
+        if not self.proxy_list or not config.USE_PROXY_ROTATION:
+            return
             
-            self.last_proxy_index = self.current_proxy_index
-            logger.info(f"Randomly selected proxy {self.current_proxy_index + 1}/{len(self.proxy_list)}")
+        # Simple sequential rotation
+        self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
+        self.proxy_rotation_count += 1
+        
+        current_proxy = self.proxy_list[self.current_proxy_index]
+        logger.info(f"🔄 Rotated to proxy {self.current_proxy_index + 1}/{len(self.proxy_list)}: {current_proxy}")
 
-    def _handle_network_error(self):
-        """Handle network errors with adaptive rate limiting"""
+    def _handle_network_error(self, error_type: str = "general"):
+        """Handle network errors with adaptive rate limiting and proxy rotation"""
         self.network_error_count += 1
         self.consecutive_errors += 1
         self.success_count = 0
@@ -97,7 +97,7 @@ class BaseScraper:
             logger.warning(f"Network error detected. Increasing delay to {self.current_delay}s")
         
         # Rotate proxy on consecutive errors
-        if self.consecutive_errors > 5 and self.proxy_list:
+        if self.consecutive_errors > 5 and config.USE_PROXY_ROTATION:
             self.rotate_proxy()
 
     def _handle_network_success(self):
@@ -109,6 +109,27 @@ class BaseScraper:
         if self.success_count > 5 and self.current_delay > 3.0:
             self.current_delay = max(self.current_delay * 0.9, 3.0)
             logger.debug(f"Success streak. Reducing delay to {self.current_delay}s")
+    
+    def should_rotate_proxy(self) -> bool:
+        """Check if proxy should be rotated based on interval"""
+        if not self.proxy_list or not config.USE_PROXY_ROTATION or len(self.proxy_list) <= 1:
+            return False
+            
+        # Check rotation interval
+        if config.PROXY_ROTATION_INTERVAL > 0:
+            return (self.proxy_rotation_count % config.PROXY_ROTATION_INTERVAL) == 0
+        
+        return False
+    
+    def get_proxy_stats(self) -> Dict[str, Any]:
+        """Get proxy rotation statistics"""
+        return {
+            'total_proxies': len(self.proxy_list),
+            'current_proxy_index': self.current_proxy_index,
+            'rotation_count': self.proxy_rotation_count,
+            'rotation_interval': config.PROXY_ROTATION_INTERVAL,
+            'proxy_rotation_enabled': config.USE_PROXY_ROTATION
+        }
 
     async def _adaptive_sleep(self, base_delay: float = None):
         """Adaptive sleep based on network conditions"""
@@ -139,6 +160,10 @@ class BaseScraper:
                 await page.close()
             except Exception as e:
                 logger.debug(f"Error closing page: {e}")
+
+        # Check if we should rotate proxy based on interval
+        if self.should_rotate_proxy():
+            self.rotate_proxy()
 
         # Default page configuration
         default_config = {
@@ -172,6 +197,14 @@ class BaseScraper:
 
         if proxy:
             context_options['proxy'] = proxy
+            logger.info(f"🌐 Using proxy: {proxy['server']}")
+
+        # Close existing context if it exists
+        if self.current_context:
+            try:
+                await self.current_context.close()
+            except Exception as e:
+                logger.debug(f"Error closing existing context: {e}")
 
         self.current_context = await self.browser.new_context(**context_options)
         page = await self.current_context.new_page()

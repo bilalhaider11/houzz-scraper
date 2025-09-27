@@ -92,6 +92,7 @@ celerybeat.pid
 
 # Rope project settings
 .ropeproject
+.dockerignore
 
 # mkdocs documentation
 /site

@@ -242,6 +242,10 @@ class DatabaseManager:
         """Mark a profile's Google search as done by ID"""
         self.update_profile_field(profile_id, 'google_search_done', 1)
     
+    def mark_profile_completed(self, profile_id: int):
+        """Mark a profile as completed after export"""
+        self.update_profile_field(profile_id, 'is_completed', 1)
+    
     def update_social_links(self, profile_id: int, social_links: dict):
         """Update social media links for a profile - handles merging and deduplication"""
         try:
@@ -398,10 +402,6 @@ class DatabaseManager:
             logger.error(f"Failed to get total profiles count for export: {e}")
             return 0
     
-    def mark_profile_completed(self, profile_id: int):
-        """Mark a profile as completed after export"""
-        self.update_profile_field(profile_id, 'is_completed', 1)
-
     def get_scraping_stats(self, platform: str) -> dict:
         """Get statistics about scraping progress and completion status"""
         try:
@@ -445,7 +445,6 @@ class DatabaseManager:
     
     def add_profile_if_not_exists(self, profile: ProfessionalProfile) -> bool:
         """Add a profile only if it doesn't already exist. Returns True if added, False if already exists."""
-        print('profile', profile)
         if self.profile_exists(profile.profile_url):
             logger.info(f"Profile already exists, skipping: {profile.profile_url}")
             return False

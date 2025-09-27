@@ -19,8 +19,6 @@ from .google_searcher import GoogleSearcher
 from .common_utils import StateManager
 from .database_manager import DatabaseManager
 from .zerobounce_verifier import ZeroBounceVerifier
-from .email_service import email_service
-from .cache_manager import cache_manager
 from .architizer_scraper import ArchitizerScraper
 from config.config import config
 
@@ -38,13 +36,15 @@ class LeadEnrichmentPipeline:
         log_dir = Path(config.LOG_DIR)
         log_dir.mkdir(exist_ok=True)
         
-        # Configure loguru
+        # Configure loguru with optimized settings
         logger.add(
             log_dir / "scraper_{time:YYYY-MM-DD}.log",
             rotation="1 day",
             retention="30 days",
             level="INFO",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
+            compression="zip",
+            enqueue=True
         )
         
     def setup_directories(self):
@@ -52,22 +52,21 @@ class LeadEnrichmentPipeline:
         Path(config.OUTPUT_DIR).mkdir(exist_ok=True)
         Path(config.LOG_DIR).mkdir(exist_ok=True)
         
-    async def run_full_pipeline(self, states: List[str] = None, professional_types: List[str] = None, max_pages: Optional[int] = None, start_page: int = 1, max_profiles: int = None, verify_emails: bool = True, platform: str = "houzz", cities: List[str] = None) -> str:
-        """Run the complete lead generation pipeline"""
-        logger.info(f"Starting full {platform} lead generation pipeline")
+    async def run_full_pipeline(self, city: str = None, city_state: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, verify_emails: bool = True, platform: str = "houzz") -> str:
+        """Run the complete lead generation pipeline for a single city and profession"""
+        logger.info(f"Starting full {platform} lead generation pipeline for {city} - {professional_type}")
         
-        # Step 1: Scrape profiles based on platform
+        # Step 1: Scrape profiles for single city and profession
         if platform == "houzz":
-            logger.info("Phase 1: Scraping Houzz profiles")
+            logger.info("Phase 1: Scraping Houzz profiles for single city and profession")
             profiles = await self.scrape_houzz_profiles(
-                states=states, 
-                professional_types=professional_types,
+                city=city,
+                city_state=city_state,
+                professional_type=professional_type,
                 max_pages=max_pages,
-                start_page=start_page,
-                max_profiles=max_profiles,
-                cities=cities
+                start_page=start_page
             )
-            logger.info(f"Scraped {len(profiles)} Houzz profiles")
+            logger.info(f"Scraped {len(profiles)} Houzz profiles for {city} - {professional_type}")
         elif platform == "architizer":
             logger.info("Phase 1: Scraping Architizer profiles")
             profiles = await self.scrape_architizer_profiles(max_pages=max_pages, start_page=start_page)
@@ -656,69 +655,39 @@ class LeadEnrichmentPipeline:
                 except Exception as e:
                     logger.error(f"Error closing database connection: {e}")
 
-    async def scrape_houzz_profiles(self, states: List[str] = None, professional_types: List[str] = None, max_pages: int = 50, start_page: int = 1, max_profiles: int = None, cities: List[str] = None) -> List[ProfessionalProfile]:
+    async def scrape_houzz_profiles(self, city: str, city_state: str, professional_type: str, max_pages: int = 50, start_page: int = 1) -> List[ProfessionalProfile]:
+        """Scrape Houzz profiles for a single city and profession"""
         profiles = []
         db_manager = None
         
         try:
             # Initialize database manager
             db_manager = DatabaseManager()
-            logger.info("Database manager initialized")
+            logger.info("Database manager initialized for single city scraping")
             
             async with HouzzScraper(database_manager=db_manager) as scraper:
-                # Use provided parameters or defaults
-                target_states = states or config.US_STATES
-                target_professional_types = professional_types or config.PROFESSIONAL_TYPES
-                
-                logger.info(f"Scraping configuration:")
-                logger.info(f"  States: {len(target_states)} ({target_states[:3]}{'...' if len(target_states) > 3 else ''})")
-                logger.info(f"  Professional types: {len(target_professional_types)} ({target_professional_types})")
-                logger.info(f"  Max pages per city: {max_pages}")
+                logger.info(f"Scraping configuration for single city/profession:")
+                logger.info(f"  City: {city}")
+                logger.info(f"  State: {city_state}")
+                logger.info(f"  Professional type: {professional_type}")
+                logger.info(f"  Max pages: {max_pages}")
                 logger.info(f"  Starting page: {start_page}")
-                if max_profiles:
-                    logger.info(f"  Max profiles limit: {max_profiles}")
-                if cities:
-                    logger.info(f"  Specific cities: {cities}")
                 
-                # Scrape all combinations of states and professional types
-                for state in target_states:
-                    for prof_type in target_professional_types:
-                        logger.info(f"\n🔍 Starting scrape for {prof_type} in {state}")
-                        
-                        # If cities are specified, filter to only those cities
-                        if cities and state in cities[0].lower():
-                            # Extract city names from the cities parameter (skip the first element which is the state)
-                            requested_cities = cities[1:] if len(cities) > 1 else []
-                            if requested_cities:
-                                logger.info(f"Scraping specific cities in {state}: {requested_cities}")
-                                state_profiles = await scraper.get_state_professionals_direct_filtered(
-                                    state=state, 
-                                    professional_type=prof_type, 
-                                    max_pages=max_pages,
-                                    start_page=start_page,
-                                    target_cities=requested_cities
-                                )
-                            else:
-                                logger.warning(f"No cities specified for {state}, skipping")
-                                continue
-                        else:
-                            # Scrape all cities in the state (original behavior)
-                            state_profiles = await scraper.get_state_professionals_direct(
-                                state=state, 
-                                professional_type=prof_type, 
-                                max_pages=max_pages,
-                                start_page=start_page
-                            )
-                        
-                        profiles.extend(state_profiles)
-                        
-                        # Profiles are already saved immediately by the scraper
-                        logger.info(f"✅ Scraped {len(state_profiles)} profiles for {state} - {prof_type} (saved automatically)")
-                        
-                        # Check if we've reached the max profiles limit
-                        if max_profiles and len(profiles) >= max_profiles:
-                            logger.info(f"🎯 Reached max profiles limit ({max_profiles}), stopping scrape")
-                            return profiles[:max_profiles]
+                # Scrape the single city and profession combination
+                logger.info(f"\n🔍 Starting scrape for {professional_type} in {city} ({city_state})")
+                
+                state_profiles = await scraper.get_state_professionals_direct_filtered(
+                    state=city_state, 
+                    professional_type=professional_type, 
+                    max_pages=max_pages,
+                    start_page=start_page,
+                    target_cities=[city]
+                )
+                
+                profiles.extend(state_profiles)
+                
+                # Profiles are already saved immediately by the scraper
+                logger.info(f"✅ Scraped {len(state_profiles)} profiles for {city} - {professional_type} (saved automatically)")
             
             logger.info(f"Total profiles scraped and stored: {len(profiles)}")
             return profiles

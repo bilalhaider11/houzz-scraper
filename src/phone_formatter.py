@@ -10,12 +10,6 @@ from loguru import logger
 import phonenumbers
 from phonenumbers import PhoneNumberFormat
 
-# Import cached phone formatting from common_utils
-try:
-    from .common_utils import phone_utils
-except ImportError:
-    from common_utils import phone_utils
-
 from .cache_manager import cached
 
 @cached(ttl=3600, key_prefix="phone_format")

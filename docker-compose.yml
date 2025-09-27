@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  houzz-scraper:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # PERSISTENT DATA VOLUMES - Critical for SQLite3 data persistence
+      - houzz_data:/app/data
+      - houzz_logs:/app/logs
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    working_dir: /app
+    restart: unless-stopped
+
+volumes:
+  # Named volumes for data persistence
+  houzz_data:
+    driver: local
+  houzz_logs:
+    driver: local
