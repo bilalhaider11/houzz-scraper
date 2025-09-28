@@ -11,6 +11,7 @@ import phonenumbers
 from phonenumbers import PhoneNumberFormat
 
 from .cache_manager import cached
+from .common_utils import CommonPhoneUtils
 
 @cached(ttl=3600, key_prefix="phone_format")
 def _format_us_phone_cached(phone_input: str) -> Optional[str]:
@@ -90,7 +91,7 @@ def extract_and_format_phone(text: str) -> Optional[str]:
         return None
     
     # Use the optimized phone extraction from common_utils
-    phones = phone_utils.extract_phone_numbers(text)
+    phones = CommonPhoneUtils.extract_phone_numbers(text)
     
     # Format and return the first valid phone found
     for phone in phones:

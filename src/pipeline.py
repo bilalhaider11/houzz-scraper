@@ -675,7 +675,7 @@ class LeadEnrichmentPipeline:
                     professional_type=professional_type, 
                     max_pages=max_pages,
                     start_page=start_page,
-                    target_cities=[city]
+                    target_city=city
                 )
                 
                 profiles.extend(state_profiles)
