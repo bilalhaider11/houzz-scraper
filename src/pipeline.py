@@ -52,7 +52,7 @@ class LeadEnrichmentPipeline:
         Path(config.OUTPUT_DIR).mkdir(exist_ok=True)
         Path(config.LOG_DIR).mkdir(exist_ok=True)
         
-    async def run_full_pipeline(self, city: str = None, city_state: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, verify_emails: bool = True, platform: str = "houzz") -> str:
+    async def run_full_pipeline(self, city: str = None, city_state: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz") -> str:
         """Run the complete lead generation pipeline for a single city and profession"""
         logger.info(f"Starting full {platform} lead generation pipeline for {city} - {professional_type}")
         
@@ -95,7 +95,7 @@ class LeadEnrichmentPipeline:
         # Step 4: Export to CSV with ZeroBounce verification
         logger.info("Phase 4: Exporting to CSV with ZeroBounce verification")
         try:
-            output_file = await self.run_export_phase(verify_emails=verify_emails, platform=platform)
+            output_file = await self.run_export_phase(platform=platform)
             if output_file:
                 logger.info(f"Exported leads to {output_file}")
             else:
@@ -533,27 +533,21 @@ class LeadEnrichmentPipeline:
             if db_manager:
                 db_manager.close()
 
-    async def run_export_phase(self, verify_emails: bool = True, platform: str = "houzz") -> str:
+    async def run_export_phase(self, platform: str = "houzz") -> str:
         """Run the CSV export phase with ZeroBounce email verification"""
-        if verify_emails:
-            logger.info("Starting export phase with ZeroBounce email verification")
-        else:
-            logger.info("Starting export phase (email verification disabled)")
+        logger.info("Starting export phase with ZeroBounce email verification")
         
         db_manager = DatabaseManager()
         
         try:
-            # Step 1: ZeroBounce email verification (if enabled)
-            if verify_emails:
-                logger.info("Running ZeroBounce email verification")
-                try:
-                    async with ZeroBounceVerifier() as zerobounce:
-                        await zerobounce.verify_database_emails(db_manager, platform)
-                except Exception as e:
-                    logger.warning(f"ZeroBounce email verification failed: {e}")
-                    logger.info("Continuing with export without email verification")
-            else:
-                logger.info("Email verification disabled - skipping verification step")
+            # Step 1: ZeroBounce email verification (always enabled)
+            logger.info("Running ZeroBounce email verification")
+            try:
+                async with ZeroBounceVerifier() as zerobounce:
+                    await zerobounce.verify_database_emails(db_manager, platform)
+            except Exception as e:
+                logger.warning(f"ZeroBounce email verification failed: {e}")
+                logger.info("Continuing with export without email verification")
             
             # Step 2: Check if there are any profiles to export
             total_profiles = db_manager.get_total_profiles_for_export_count(platform=platform)

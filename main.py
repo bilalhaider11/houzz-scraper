@@ -21,10 +21,11 @@ SRC_PATH = Path(__file__).parent / "src"
 sys.path.insert(0, str(SRC_PATH))
 
 # FastAPI imports
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+from typing import Literal
 import uvicorn
 
 # Import core modules with error handling
@@ -46,36 +47,136 @@ except ImportError as e:
 
 class ScrapeRequest(BaseModel):
     """Request model for scraping operations"""
-    platform: str = Field(..., description="Platform to scrape (houzz or architizer)")
-    city: str = Field(..., description="Single city to scrape (e.g., 'chicago-il-us')")
-    professional_type: str = Field(..., description="Single professional type to scrape (e.g., 'interior-designer')")
-    max_pages: Optional[int] = Field(50, description="Maximum number of pages to scrape for this city/profession combination")
-    start_page: int = Field(1, description="Starting page number for scraping")
-    no_email_verification: bool = Field(False, description="Skip email verification step")
+    platform: Literal["houzz", "architizer"] = Field(
+        ..., 
+        description="Platform to scrape from",
+        example="houzz"
+    )
+    city: str = Field(
+        ..., 
+        description="City to scrape (use format like 'chicago-il-us' or 'new-york-ny-us')",
+        example="chicago-il-us",
+        min_length=3,
+        max_length=50
+    )
+    professional_type: Literal[
+        "interior-designer", "architect", "general-contractor", 
+        "design-build", "landscape-architect", "kitchen-and-bath", "home-builders"
+    ] = Field(
+        ..., 
+        description="Type of professional to scrape",
+        example="interior-designer"
+    )
+    max_pages: Optional[int] = Field(
+        50, 
+        description="Maximum number of pages to scrape for this city/profession combination",
+        ge=1,
+        le=100,
+        example=50
+    )
+    start_page: int = Field(
+        1, 
+        description="Starting page number for scraping",
+        ge=1,
+        le=1000,
+        example=1
+    )
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "platform": "houzz",
+                "city": "chicago-il-us",
+                "professional_type": "interior-designer",
+                "max_pages": 50,
+                "start_page": 1
+            }
+        }
+
+class CityInfo(BaseModel):
+    """Individual city information"""
+    name: str = Field(..., description="Formatted city name", example="Chicago")
+    region_id: str = Field(..., description="Region ID for scraping", example="12345")
+    city_info: str = Field(..., description="City identifier for API calls", example="chicago-il-us")
 
 class ListCitiesResponse(BaseModel):
     """Response model for listing cities"""
-    state: str
-    cities: List[Dict[str, str]]
-    total_count: int
+    state: str = Field(..., description="State name", example="Illinois")
+    cities: List[CityInfo] = Field(..., description="List of cities in the state")
+    total_count: int = Field(..., description="Total number of cities", example=25)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "state": "Illinois",
+                "cities": [
+                    {
+                        "name": "Chicago",
+                        "region_id": "12345",
+                        "city_info": "chicago-il-us"
+                    },
+                    {
+                        "name": "Springfield",
+                        "region_id": "12346", 
+                        "city_info": "springfield-il-us"
+                    }
+                ],
+                "total_count": 2
+            }
+        }
 
 class StatsResponse(BaseModel):
     """Response model for statistics"""
-    stats: Dict[str, Any]
+    stats: Dict[str, Any] = Field(..., description="Scraping statistics and metrics")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "stats": {
+                    "total_profiles": 1250,
+                    "websites_scraped": 890,
+                    "google_searches_done": 450,
+                    "completed_profiles": 1200,
+                    "websites_pending": 50,
+                    "google_searches_pending": 25,
+                    "profiles_pending_completion": 30
+                }
+            }
+        }
 
 class ScrapeResponse(BaseModel):
     """Response model for scraping operations"""
-    success: bool
-    message: str
-    output_file: Optional[str] = None
-    profiles_scraped: Optional[int] = None
-    execution_time: Optional[float] = None
+    success: bool = Field(..., description="Whether the scraping operation was successful", example=True)
+    message: str = Field(..., description="Human-readable status message", example="✅ Houzz pipeline completed successfully for chicago-il-us - interior-designer!")
+    output_file: Optional[str] = Field(None, description="Path to the generated output file", example="/data/output/houzz_chicago_interior-designer_2024-01-15.xlsx")
+    profiles_scraped: Optional[int] = Field(None, description="Number of profiles scraped", example=150)
+    execution_time: Optional[float] = Field(None, description="Execution time in seconds", example=125.5)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "message": "✅ Houzz pipeline completed successfully for chicago-il-us - interior-designer!",
+                "output_file": "/data/output/houzz_chicago_interior-designer_2024-01-15.xlsx",
+                "profiles_scraped": 150,
+                "execution_time": 125.5
+            }
+        }
 
 class ErrorResponse(BaseModel):
     """Error response model"""
-    error: str
-    detail: str
-    status_code: int
+    error: str = Field(..., description="Error type or title", example="Validation Error")
+    detail: str = Field(..., description="Detailed error message", example="Invalid professional type: designer. Available types: ['interior-designer', 'architect']")
+    status_code: int = Field(..., description="HTTP status code", example=400)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "error": "Validation Error",
+                "detail": "Invalid professional type: designer. Available types: ['interior-designer', 'architect']",
+                "status_code": 400
+            }
+        }
 
 # ============================================================================
 # FASTAPI APPLICATION
@@ -83,10 +184,69 @@ class ErrorResponse(BaseModel):
 
 app = FastAPI(
     title="Houzz Lead Generation Pipeline API",
-    description="Production-ready API for scraping and enriching leads from Houzz and Architizer",
+    description="""
+    ## Production-ready API for scraping and enriching leads from Houzz and Architizer
+    
+    This API provides comprehensive lead generation capabilities for home improvement professionals:
+    
+    * **Scraping**: Extract professional profiles from Houzz and Architizer platforms
+    * **Enrichment**: Enhance profiles with additional data from websites and Google searches
+    * **Verification**: Validate email addresses and phone numbers
+    * **Export**: Generate Excel files with enriched lead data
+    
+    ### Key Features:
+    - 🏠 **Multi-Platform Support**: Houzz and Architizer scraping
+    - 🎯 **Professional Types**: Interior designers, architects, contractors, and more
+    - 🌍 **Geographic Coverage**: Major US cities and regions
+    - 📧 **Email Verification**: ZeroBounce integration for email validation
+    - 🔍 **Data Enrichment**: Google search integration for additional data
+    - 📊 **Statistics**: Real-time scraping progress and metrics
+    - 🔄 **Proxy Rotation**: Built-in proxy support for large-scale scraping
+    
+    ### Getting Started:
+    1. Use `/list-all-cities` to see available cities
+    2. Use `/list-professional-types` to see available professions
+    3. Use `/scrape` to start a scraping job
+    4. Monitor progress with `/stats`
+    """,
     version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    openapi_tags=[
+        {
+            "name": "General",
+            "description": "General API information and health checks"
+        },
+        {
+            "name": "Cities",
+            "description": "City and location management endpoints"
+        },
+        {
+            "name": "Professions", 
+            "description": "Professional type management endpoints"
+        },
+        {
+            "name": "Scraping",
+            "description": "Core scraping and pipeline operations"
+        },
+        {
+            "name": "Statistics",
+            "description": "Statistics and monitoring endpoints"
+        },
+        {
+            "name": "System",
+            "description": "System status and configuration endpoints"
+        }
+    ],
+    contact={
+        "name": "Houzz Lead Generation Pipeline",
+        "url": "https://github.com/your-org/houzz-scraper",
+        "email": "support@yourcompany.com"
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT"
+    }
 )
 
 # Add CORS middleware
@@ -203,9 +363,22 @@ def validate_city_and_profession(city: str, professional_type: str) -> tuple:
 # API ENDPOINTS
 # ============================================================================
 
-@app.get("/", response_model=Dict[str, str])
+@app.get(
+    "/", 
+    response_model=Dict[str, str],
+    tags=["General"],
+    summary="API Information",
+    description="Get basic information about the API and available documentation endpoints"
+)
 async def root():
-    """Root endpoint with API information"""
+    """
+    ## Root Endpoint
+    
+    Returns basic information about the API including:
+    - API version and status
+    - Links to documentation (Swagger UI and ReDoc)
+    - Current operational status
+    """
     return {
         "message": "Houzz Lead Generation Pipeline API v2.0",
         "docs": "/docs",
@@ -213,14 +386,42 @@ async def root():
         "status": "running"
     }
 
-@app.get("/health", response_model=Dict[str, str])
+@app.get(
+    "/health", 
+    response_model=Dict[str, str],
+    tags=["General"],
+    summary="Health Check",
+    description="Check if the API is running and healthy"
+)
 async def health_check():
-    """Health check endpoint"""
+    """
+    ## Health Check Endpoint
+    
+    Simple health check to verify the API is operational.
+    Returns a basic status message.
+    """
     return {"status": "healthy", "message": "API is running"}
 
-@app.get("/list-cities/{state}", response_model=ListCitiesResponse)
+@app.get(
+    "/list-cities/{state}", 
+    response_model=ListCitiesResponse,
+    tags=["Cities"],
+    summary="List Cities by State",
+    description="Get all available cities for a specific state that can be used for scraping"
+)
 async def list_cities(state: str):
-    """List cities for a specific state"""
+    """
+    ## List Cities by State
+    
+    Returns all available cities for a specific state that can be used in scraping operations.
+    
+    **Parameters:**
+    - `state`: State identifier (e.g., 'illinois', 'california', 'new-york')
+    
+    **Returns:**
+    - List of cities with their formatted names, region IDs, and city identifiers
+    - Total count of cities available
+    """
     try:
         if state not in config.STATE_CITY_REGIONS:
             raise HTTPException(
@@ -260,9 +461,24 @@ async def list_cities(state: str):
         logger.error(f"Error listing cities for {state}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list cities: {str(e)}")
 
-@app.get("/list-professional-types", response_model=Dict[str, Any])
+@app.get(
+    "/list-professional-types", 
+    response_model=Dict[str, Any],
+    tags=["Professions"],
+    summary="List Professional Types",
+    description="Get all available professional types that can be scraped"
+)
 async def list_professional_types():
-    """List all available professional types for scraping"""
+    """
+    ## List Professional Types
+    
+    Returns all available professional types that can be used in scraping operations.
+    
+    **Returns:**
+    - List of professional types with their identifiers
+    - Human-readable descriptions for each type
+    - Total count of available types
+    """
     try:
         return {
             "professional_types": config.PROFESSIONAL_TYPES,
@@ -281,9 +497,25 @@ async def list_professional_types():
         logger.error(f"Error listing professional types: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list professional types: {str(e)}")
 
-@app.get("/list-all-cities", response_model=Dict[str, Any])
+@app.get(
+    "/list-all-cities", 
+    response_model=Dict[str, Any],
+    tags=["Cities"],
+    summary="List All Cities",
+    description="Get all available cities across all states for scraping"
+)
 async def list_all_cities():
-    """List all available cities across all states"""
+    """
+    ## List All Cities
+    
+    Returns all available cities across all states that can be used in scraping operations.
+    
+    **Returns:**
+    - Complete list of cities with their details
+    - State information for each city
+    - Total count of available cities
+    - List of all available states
+    """
     try:
         all_cities = []
         for state, cities in config.STATE_CITY_REGIONS.items():
@@ -312,13 +544,28 @@ async def list_all_cities():
         logger.error(f"Error listing all cities: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list all cities: {str(e)}")
 
-@app.get("/stats", response_model=StatsResponse)
+@app.get(
+    "/stats", 
+    response_model=StatsResponse,
+    tags=["Statistics"],
+    summary="Get Scraping Statistics",
+    description="Get comprehensive statistics about scraping progress and performance"
+)
 async def get_stats(platform: Optional[str] = None):
-    """Get scraping progress statistics
+    """
+    ## Get Scraping Statistics
     
-    Args:
-        platform: Optional platform filter ('houzz' or 'architizer'). 
-                 If not provided, returns combined stats for all platforms.
+    Returns detailed statistics about scraping progress and performance.
+    
+    **Parameters:**
+    - `platform` (optional): Filter by platform ('houzz' or 'architizer'). If not provided, returns combined stats for all platforms.
+    
+    **Returns:**
+    - Total profiles scraped
+    - Websites scraped and pending
+    - Google searches completed and pending
+    - Completed profiles count
+    - Profiles pending completion
     """
     try:
         db_manager = DatabaseManager()
@@ -363,9 +610,26 @@ async def get_stats(platform: Optional[str] = None):
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
 
-@app.get("/proxy-status", response_model=Dict[str, Any])
+@app.get(
+    "/proxy-status", 
+    response_model=Dict[str, Any],
+    tags=["System"],
+    summary="Get Proxy Status",
+    description="Get proxy rotation status and configuration information"
+)
 async def get_proxy_status():
-    """Get proxy rotation status and statistics"""
+    """
+    ## Get Proxy Status
+    
+    Returns information about proxy rotation configuration and current status.
+    
+    **Returns:**
+    - Proxy rotation enabled/disabled status
+    - Proxy rotation interval settings
+    - Proxy authentication configuration status
+    - Current proxy statistics (if rotation is enabled)
+    - Total number of available proxies
+    """
     try:
         # Create a temporary scraper instance to get proxy stats
         from src.houzz_scraper import HouzzScraper
@@ -395,9 +659,40 @@ async def get_proxy_status():
         logger.error(f"Error getting proxy status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get proxy status: {str(e)}")
 
-@app.post("/scrape", response_model=ScrapeResponse)
+@app.post(
+    "/scrape", 
+    response_model=ScrapeResponse,
+    tags=["Scraping"],
+    summary="Start Scraping Job",
+    description="Start a new scraping job for a specific city and professional type",
+    status_code=status.HTTP_200_OK
+)
 async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
-    """Main scraping endpoint that runs the pipeline for a single city and profession"""
+    """
+    ## Start Scraping Job
+    
+    Initiates a complete scraping pipeline for a specific city and professional type.
+    
+    **Process:**
+    1. Validates the request parameters (city, profession, platform)
+    2. Validates the environment and configuration
+    3. Initializes the lead enrichment pipeline
+    4. Executes the full scraping and enrichment process
+    5. Returns results with execution details
+    
+    **Features:**
+    - Multi-platform support (Houzz and Architizer)
+    - Email verification via ZeroBounce integration
+    - Website scraping and enrichment
+    - Google search integration
+    - Excel file generation
+    
+    **Returns:**
+    - Success status and message
+    - Output file path (if successful)
+    - Number of profiles scraped
+    - Execution time in seconds
+    """
     import time
     start_time = time.time()
     
@@ -429,13 +724,6 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                 detail=f"Failed to initialize pipeline: {str(e)}"
             )
         
-        # Determine email verification setting
-        verify_emails = not request.no_email_verification
-        if not verify_emails:
-            logger.info("Email verification disabled by request parameter")
-        else:
-            logger.info("Email verification enabled (default)")
-        
         # Run the complete pipeline for single city and profession
         logger.info(f"🚀 Starting {request.platform} pipeline for {validated_city} - {request.professional_type}")
         
@@ -446,7 +734,6 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
             professional_type=request.professional_type,
             max_pages=request.max_pages,
             start_page=request.start_page,
-            verify_emails=verify_emails,
             platform=request.platform
         )
         
@@ -497,7 +784,7 @@ async def http_exception_handler(request, exc):
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     """General exception handler"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(
