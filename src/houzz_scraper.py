@@ -16,11 +16,11 @@ from loguru import logger
 import random
 from datetime import datetime
 
-from src.models import ProfessionalProfile
-from src.base_scraper import BaseScraper
-from src.common_utils import WebUtils, StateManager, zipcode_utils
-from src.url_cleaner import get_clean_target_url
-from src.phone_formatter import extract_and_format_phone
+from .models import ProfessionalProfile
+from .base_scraper import BaseScraper
+from .common_utils import WebUtils, StateManager, zipcode_utils
+from .url_cleaner import get_clean_target_url
+from .phone_formatter import extract_and_format_phone
 from config.config import config
 
 # Professional type mapping for consistent naming

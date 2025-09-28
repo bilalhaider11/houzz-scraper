@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from .email_service import email_service, EmailValidationStatus
 from .phone_formatter import validate_and_format_us_phone
+from config.config import config
 
 # Load environment variables
 load_dotenv()
@@ -42,7 +43,7 @@ class PersonalEmailExtractor:
         """Async context manager entry - initialize Playwright"""
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
-            headless=True,
+            headless=config.HEADLESS,
             args=[
                 '--no-sandbox',
                 '--disable-dev-shm-usage',

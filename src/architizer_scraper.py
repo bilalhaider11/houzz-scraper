@@ -13,11 +13,11 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from datetime import datetime
 
-from src.models import ProfessionalProfile
-from src.base_scraper import BaseScraper
-from src.common_utils import WebUtils, StateManager, phone_utils, zipcode_utils
-from src.email_service import email_service, EmailValidationStatus
-from src.phone_formatter import validate_and_format_us_phone
+from .models import ProfessionalProfile
+from .base_scraper import BaseScraper
+from .common_utils import WebUtils, StateManager, phone_utils, zipcode_utils
+from .email_service import email_service, EmailValidationStatus
+from .phone_formatter import validate_and_format_us_phone
 from config.config import config
 
 # Architizer URLs and constants
