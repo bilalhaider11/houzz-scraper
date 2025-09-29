@@ -18,20 +18,20 @@ from datetime import datetime
 
 from .models import ProfessionalProfile
 from .base_scraper import BaseScraper
-from .common_utils import WebUtils, StateManager, zipcode_utils
+from .common_utils import WebUtils, StateManager, zipcode_utils, constants, log_utils
 from .url_cleaner import get_clean_target_url
 from .phone_formatter import extract_and_format_phone
 from config.config import config
 
-# Professional type mapping for consistent naming
-PROFESSIONAL_TYPE_MAPPING = {
+# Professional type display names mapping (using existing config pattern)
+PROFESSIONAL_TYPE_DISPLAY_NAMES = {
     'interior-designer': 'Interior Designer',
     'architect': 'Architect',
     'general-contractor': 'General Contractor',
-    'home-builders': 'Home Builder',
     'design-build': 'Design-Build',
     'landscape-architect': 'Landscape Architect',
-    'kitchen-and-bath': 'Kitchen & Bath Designer'
+    'kitchen-and-bath': 'Kitchen & Bath Designer',
+    'home-builders': 'Home Builder'
 }
 
 class HouzzScraper(BaseScraper):
@@ -71,7 +71,7 @@ class HouzzScraper(BaseScraper):
                 logger.error(f"No cities found for state: {state}")
                 return professionals
             
-            display_professional_type = PROFESSIONAL_TYPE_MAPPING.get(professional_type, professional_type.title())
+            display_professional_type = PROFESSIONAL_TYPE_DISPLAY_NAMES.get(professional_type, professional_type.title())
             
             # Process each city
             for city_index, (city, region_id) in enumerate(city_regions):
@@ -158,16 +158,18 @@ class HouzzScraper(BaseScraper):
                 return professionals
             
             city, region_id = target_city_info
-            display_professional_type = PROFESSIONAL_TYPE_MAPPING.get(professional_type, professional_type.title())
+            display_professional_type = PROFESSIONAL_TYPE_DISPLAY_NAMES.get(professional_type, professional_type.title())
             
             page = await self.create_or_rotate_page()
             logger.info(f"✅ Created or rotated new page for {city}")
 
             base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{professional_type}/{city}-probr0-bo~{prof_param}~{region_id}"
-            logger.info(f"Scraping {professional_type} in {city} ({state}): {base_url}")
             
             pages_scraped_this_city = 0
             max_pages_to_scrape = max_pages if max_pages is not None else 100
+            
+            logger.info(f"🔍 Scraping {professional_type} in {city} ({state}): {base_url}")
+            logger.info(f"📋 Target: {max_pages_to_scrape} pages starting from page {start_page}")
             
             # Process pages for this city
             for page_num in range(start_page, start_page + max_pages_to_scrape):
@@ -260,7 +262,7 @@ class HouzzScraper(BaseScraper):
                     logger.info(f"No more professionals found on page {page_num} for {city}/{professional_type}")
                     return []
                 
-                logger.info(f"Successfully scraped page {page_num} for {city}/{professional_type} ({state})")
+                logger.info(f"✅ Successfully scraped page {page_num} for {city}/{professional_type} ({state}) - Found {len(page_professionals)} professionals")
                 return page_professionals
                 
             except Exception as e:
@@ -279,78 +281,35 @@ class HouzzScraper(BaseScraper):
         return []
     
     async def _navigate_with_error_handling(self, page: Page, url: str):
-        """Navigate to URL with comprehensive error handling"""
-        try:
-            await page.goto(url, wait_until='domcontentloaded', timeout=config.TIMEOUT * 1000)
-            self._handle_network_success()
-        except Exception as goto_error:
-            self._handle_network_error()
-            
-            # Check for specific network/connection errors that require context reset
-            error_str = str(goto_error).lower()
-            network_errors = [
-                'net::err_network_changed', 'connection closed', 'connection reset',
-                'timeout', 'err_internet_disconnected', 'err_network_access_denied',
-                'err_proxy_connection_failed', 'connection refused', 
-                'driver session', 'browser context', 'page closed'
-            ]
-            
-            if any(err in error_str for err in network_errors):
-                logger.warning(f"🔄 Network error #{self.consecutive_errors}: {goto_error}")
-                
-                # Use adaptive delay before recovery attempts
-                await self._adaptive_sleep(3.0)
-                
-                # Aggressive recovery: close everything and start fresh
-                recovery_success = await self._attempt_recovery(page, url)
-                
-                if not recovery_success:
-                    raise goto_error
-            else:
-                # Non-network error, re-raise immediately
-                raise goto_error
+        """Navigate to URL with simplified error handling"""
+        success = await self.navigate_to_url(page, url)
+        if not success:
+            # Try recovery with new context
+            await self._attempt_navigation_recovery(page, url)
     
-    async def _attempt_recovery(self, page: Page, url: str) -> bool:
-        """Attempt to recover from network errors"""
-        for recovery_attempt in range(2):  # Try recovery twice
-            try:
-                logger.info(f"🔧 Recovery attempt {recovery_attempt + 1}/2")
+    async def _attempt_navigation_recovery(self, page: Page, url: str):
+        """Attempt to recover from navigation failure"""
+        try:
+            log_utils.log_network_error("Navigation failed, attempting recovery", url)
+            
+            # Force close current context and create new one
+            if self.current_context:
+                await self.current_context.close()
+            self.current_context = None
+            
+            # Create new page and try again
+            new_page = await self.create_or_rotate_page()
+            success = await self.navigate_to_url(new_page, url)
+            
+            if success:
+                log_utils.log_network_error("Recovery successful", url)
+            else:
+                raise Exception("All recovery attempts failed")
                 
-                # Close current page and context
-                if page and not page.is_closed():
-                    await page.close()
-                if self.current_context:
-                    await self.current_context.close()
-                self.current_context = None
-                
-                # Wait a bit for cleanup
-                await asyncio.sleep(2)
-                
-                # Force proxy rotation if using proxies
-                if self.proxy_list:
-                    self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
-                    logger.info(f"🔄 Forced proxy rotation to index {self.current_proxy_index}")
-                
-                # Create new page with fresh context
-                page = await self.create_or_rotate_page()
-                
-                # Use adaptive delay before retrying
-                await self._adaptive_sleep(5.0)
-                
-                # Retry the navigation with new context
-                await page.goto(url, wait_until='domcontentloaded', timeout=config.TIMEOUT * 1000)
-                logger.info(f"✅ Successfully recovered from network error")
-                self._handle_network_success()
-                return True
-                
-            except Exception as recovery_error:
-                logger.warning(f"❌ Recovery attempt {recovery_attempt + 1} failed: {recovery_error}")
-                if recovery_attempt == 1:  # Last attempt
-                    logger.error(f"🚨 All recovery attempts failed")
-                    return False
-                await self._adaptive_sleep(8.0)  # Longer delay before next recovery attempt
-        
-        return False
+        except Exception as e:
+            log_utils.log_error_with_context("Navigation recovery failed", {"url": url, "error": str(e)})
+            raise
+    
     
     async def extract_professionals_from_listing_page(self, page: Page, professional_type: str = '') -> List[ProfessionalProfile]:
         """Extract professional data directly from listing page"""
@@ -358,27 +317,7 @@ class HouzzScraper(BaseScraper):
         
         try:
             # Wait for professional listings to load
-            wait_selectors = [
-                '.hz-pro-search-results__item',
-                '[class*="ProSearchResultsV2__StyledListItem"]',
-                'li[class*="pro"]',
-                '[class*="professional"]',
-                '[class*="listing"]',
-                'article',
-                '[class*="BusinessDetails__StyledCell"]'
-            ]
-            
-            waited = False
-            for selector in wait_selectors:
-                try:
-                    await page.wait_for_selector(selector, timeout=10000)
-                    waited = True
-                    logger.debug(f"Successfully waited for selector: {selector}")
-                    break
-                except:
-                    continue
-            
-            if not waited:
+            if not await self.wait_for_elements(page, constants.HOUZZ_SELECTORS):
                 logger.warning("Could not find any professional listing elements")
                 return professionals
             
@@ -395,12 +334,12 @@ class HouzzScraper(BaseScraper):
                     profile = await self.extract_professional_from_container(container, page, professional_type)
                     if profile and profile.name:  # Only add if we got a name
                         professionals.append(profile)
-                        logger.debug(f"Extracted professional: {profile.name}")
+                        log_utils.log_profile_extracted(profile.name)
                 except Exception as e:
                     logger.debug(f"Error extracting professional from container: {e}")
                     continue
                     
-            logger.info(f"Successfully extracted {len(professionals)} professionals from listing page")
+            log_utils.log_scraping_progress(1, len(professionals), "listing page")
             
         except Exception as e:
             logger.warning(f"Error extracting professionals from listing page: {e}")
@@ -460,7 +399,7 @@ class HouzzScraper(BaseScraper):
             logger.info(f"Skipping already scraped profile: {profile_url}")
             return None
         
-        display_professional_type = PROFESSIONAL_TYPE_MAPPING.get(professional_type, professional_type.title())
+        display_professional_type = PROFESSIONAL_TYPE_DISPLAY_NAMES.get(professional_type, professional_type.title())
         
         for attempt in range(max_retries):
             try:

@@ -452,6 +452,24 @@ class DatabaseManager:
         self.add_profile(profile)
         return True
 
+    async def remove_profile(self, profile_id: int) -> bool:
+        """Remove a profile from the database"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute("DELETE FROM professionals WHERE id = ?", (profile_id,))
+                conn.commit()
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"✅ Removed profile with ID {profile_id} from database")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Profile with ID {profile_id} not found for removal")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error removing profile {profile_id}: {e}")
+            return False
+
     def close(self):
         """Close the database connection - now handled by pool"""
         logger.info("Database manager closed (connections managed by pool).")

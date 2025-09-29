@@ -11,7 +11,7 @@ from playwright.async_api import Page, Browser
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 
-from .common_utils import WebUtils, StateManager
+from .common_utils import WebUtils, StateManager, constants, nav_utils, log_utils
 from config.config import config
 
 
@@ -151,8 +151,9 @@ class BaseScraper:
         self.current_context = await self.browser.new_context(**context_options)
         page = await self.current_context.new_page()
         
-        # Set headers and enable request logging
+        # Set headers, block unnecessary resources, and enable request logging
         await self.set_page_headers(page)
+        await page.route("**/*", self._block_unnecessary_resources)
         await page.route("**/*", self._log_network_request)
         
         return page
@@ -171,11 +172,59 @@ class BaseScraper:
             'Cache-Control': 'max-age=0'
         })
 
-    async def _log_network_request(self, route):
-        """Log network requests for debugging"""
-        logger.debug(f"Request: {route.request.method} {route.request.url}")
+    async def _block_unnecessary_resources(self, route):
+        """Block unnecessary resources - only allow specific URLs we need"""
+        url = route.request.url
+        resource_type = route.request.resource_type
+        
+        # Import re for pattern matching
+        import re
+        
+        # First check if it's from an allowed domain
+        is_allowed_domain = any(domain in url.lower() for domain in constants.ALLOWED_DOMAINS)
+        if not is_allowed_domain:
+            await route.abort()
+            return
+        
+        # Check if it matches our allowed URL patterns
+        matches_allowed_pattern = any(re.match(pattern, url) for pattern in constants.ALLOWED_URL_PATTERNS)
+        
+        # Block if it doesn't match allowed patterns OR is a blocked resource type
+        if not matches_allowed_pattern or resource_type in constants.BLOCKED_RESOURCE_TYPES:
+            await route.abort()
+            return
+        
         await route.continue_()
 
+    async def _log_network_request(self, route):
+        """Log network requests for debugging - only log essential requests"""
+        url = route.request.url
+        
+        # Only log requests that are essential for scraping
+        essential_patterns = [
+            r'https://www\.houzz\.com/professionals/.*?/.*?-.*?probr0-bo~.*?',  # Search pages
+            r'https://www\.houzz\.com/professionals/.*?/.*?-pfvwus-pf~.*?'      # Profile pages
+        ]
+        
+        import re
+        if any(re.match(pattern, url) for pattern in essential_patterns):
+            logger.info(f"🎯 Essential Request: {route.request.method} {url}")
+        
+        await route.continue_()
+
+    async def navigate_to_url(self, page: Page, url: str, wait_until: str = 'domcontentloaded') -> bool:
+        """Navigate to URL with standardized error handling"""
+        return await nav_utils.navigate_with_retry(page, url, wait_until=wait_until)
+    
+    async def wait_for_elements(self, page: Page, selectors: List[str]) -> bool:
+        """Wait for any of the provided selectors to appear"""
+        return await nav_utils.wait_for_any_selector(page, selectors)
+    
+    async def _handle_navigation_error(self, error: Exception, attempt: int):
+        """Handle navigation errors with proxy rotation if needed"""
+        if attempt > 0:  # Only rotate proxy after first failure
+            await self._rotate_proxy()
+    
     async def _wait_for_content_load(self, page: Page) -> bool:
         """Wait for content to load with fallback strategies"""
         try:
@@ -190,7 +239,7 @@ class BaseScraper:
                 return True
 
     def get_browser_args(self) -> List[str]:
-        """Get browser launch arguments for stealth and performance"""
+        """Get browser launch arguments for stealth and performance - optimized for scraping only"""
         return [
             '--no-sandbox',
             '--disable-dev-shm-usage',
@@ -217,7 +266,16 @@ class BaseScraper:
             '--disable-features=VizDisplayCompositor,TranslateUI,BlinkGenPropertyTrees',
             '--user-agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"',
             '--lang=en-US,en',
-            '--disable-client-side-phishing-detection'
+            '--disable-client-side-phishing-detection',
+            # Additional blocking for unnecessary resources
+            '--disable-images',  # Block images
+            '--disable-javascript',  # Disable JS for faster loading
+            '--disable-domain-reliability',
+            '--disable-hang-monitor',
+            '--disable-speech-api',
+            '--disable-web-resources',
+            '--aggressive-cache-discard',
+            '--aggressive-tab-discard'
         ]
 
     async def cleanup(self):

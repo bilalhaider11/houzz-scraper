@@ -9,10 +9,15 @@ code duplication and provide consistent functionality.
 
 import re
 import json
-from typing import List, Optional, Dict, Any
+import asyncio
+import random
+from typing import List, Optional, Dict, Any, Callable, TypeVar
 from datetime import datetime
 from fake_useragent import UserAgent
 from loguru import logger
+from playwright.async_api import Page
+
+T = TypeVar('T')
 
 class CommonPhoneUtils:
     """Consolidated phone number utilities"""
@@ -222,3 +227,146 @@ class StateManager:
         if key not in self.state:
             self.state[key] = []
         return url in self.state[key]
+
+
+# ============================================================================
+# OPTIMIZED SCRAPING UTILITIES (DRY & KISS Principles)
+# ============================================================================
+
+class ScrapingConstants:
+    """Centralized constants to avoid magic numbers and strings"""
+    
+    # Common selectors
+    HOUZZ_SELECTORS = [
+        '.hz-pro-search-results__item',
+        '[class*="ProSearchResultsV2__StyledListItem"]',
+        'li[class*="pro"]',
+        '[class*="professional"]',
+        '[class*="listing"]',
+        'article',
+        '[class*="BusinessDetails__StyledCell"]'
+    ]
+    
+    # ALLOWED domains - only allow specific Houzz URLs we need
+    ALLOWED_DOMAINS = [
+        'houzz.com',
+        'architizer.com'
+    ]
+    
+    # ALLOWED URL patterns - only allow specific patterns we need
+    ALLOWED_URL_PATTERNS = [
+        # Search/listing pages
+        r'https://www\.houzz\.com/professionals/.*?/.*?-.*?probr0-bo~.*?',
+        # Profile pages  
+        r'https://www\.houzz\.com/professionals/.*?/.*?-pfvwus-pf~.*?',
+        # Architizer pages
+        r'https://architizer\.com/.*?',
+        # Static assets we actually need
+        r'https://.*?\.houzz\.com/.*?\.(css|js)$'
+    ]
+    
+    # Blocked domains for performance (everything else)
+    BLOCKED_DOMAINS = [
+        'doubleclick.net', 'googlesyndication.com', 'google-analytics.com',
+        'googletagmanager.com', 'criteo.com', 'mountain.com', 'scorecardresearch.com',
+        'online-metrix.net', 'recaptcha', 'fundingchoicesmessages.google.com',
+        'dnacdn.net', 'gstatic.com', 'gtm.houzz.com', 'evt.houzz.com',
+        'facebook.com', 'instagram.com', 'twitter.com', 'linkedin.com',
+        'youtube.com', 'pinterest.com', 'tiktok.com', 'snapchat.com'
+    ]
+    
+    BLOCKED_RESOURCE_TYPES = ['image', 'media', 'font', 'stylesheet', 'script']
+    
+    # Logging patterns - only log the URLs we actually need
+    LOG_SKIP_PATTERNS = [
+        '/fp/', '/gtag/', '/analytics', '/recaptcha', '/doubleclick', '/googlesyndication', 
+        '/criteo', '/mountain.com', '/scorecardresearch', '/online-metrix', '/js/log',
+        '/evt.houzz.com', '/gtm.houzz.com', '/gum.criteo.com', '/sb.scorecardresearch.com',
+        '/px.mountain.com', '/google.com/ccm', '/google-analytics.com', '/facebook.com',
+        '/instagram.com', '/twitter.com', '/linkedin.com', '/youtube.com', '/pinterest.com'
+    ]
+
+
+class NavigationUtils:
+    """Simplified navigation utilities"""
+    
+    @staticmethod
+    async def navigate_with_retry(page: Page, url: str, max_retries: int = 3, 
+                                 wait_until: str = 'domcontentloaded', timeout: int = 30000) -> bool:
+        """Navigate to URL with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                await page.goto(url, wait_until=wait_until, timeout=timeout)
+                return True
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = (2 ** attempt) + random.uniform(1, 3)
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Navigation failed after {max_retries} attempts: {e}")
+        return False
+    
+    @staticmethod
+    async def wait_for_any_selector(page: Page, selectors: List[str], timeout: int = 10000) -> bool:
+        """Wait for any of the provided selectors"""
+        for selector in selectors:
+            try:
+                await page.wait_for_selector(selector, timeout=timeout)
+                return True
+            except Exception:
+                continue
+        return False
+
+
+class LoggingUtils:
+    """Simplified logging utilities"""
+    
+    @staticmethod
+    def log_scraping_start(platform: str, location: str, profession: str, pages: int):
+        """Log scraping start"""
+        logger.info(f"🔍 Starting {platform} scraping: {profession} in {location} ({pages} pages)")
+    
+    @staticmethod
+    def log_scraping_progress(page_num: int, found_count: int, location: str):
+        """Log scraping progress"""
+        logger.info(f"📄 Page {page_num} - Found {found_count} professionals in {location}")
+    
+    @staticmethod
+    def log_scraping_complete(total_found: int, location: str, profession: str):
+        """Log scraping completion"""
+        logger.info(f"✅ Scraping complete: {total_found} {profession} professionals in {location}")
+    
+    @staticmethod
+    def log_profile_extracted(name: str):
+        """Log profile extraction"""
+        logger.debug(f"✅ Extracted: {name}")
+    
+    @staticmethod
+    def log_retry_attempt(attempt: int, max_retries: int, url: str):
+        """Log retry attempt"""
+        logger.warning(f"🔄 Retry {attempt}/{max_retries} for {url}")
+
+
+class RetryUtils:
+    """Simplified retry utilities"""
+    
+    @staticmethod
+    async def retry_async(func: Callable[..., T], *args, max_retries: int = 3, **kwargs) -> Optional[T]:
+        """Execute async function with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = (2 ** attempt) + random.uniform(1, 3)
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Function failed after {max_retries} attempts: {e}")
+        return None
+
+
+# Global instances for easy access
+constants = ScrapingConstants()
+nav_utils = NavigationUtils()
+log_utils = LoggingUtils()
+retry_utils = RetryUtils()

@@ -148,18 +148,32 @@ class ScrapeResponse(BaseModel):
     """Response model for scraping operations"""
     success: bool = Field(..., description="Whether the scraping operation was successful", example=True)
     message: str = Field(..., description="Human-readable status message", example="✅ Houzz pipeline completed successfully for chicago-il-us - interior-designer!")
-    output_file: Optional[str] = Field(None, description="Path to the generated output file", example="/data/output/houzz_chicago_interior-designer_2024-01-15.xlsx")
+    output_file: Optional[str] = Field(None, description="Path to the generated output file (deprecated - use stats and profiles instead)", example=None)
     profiles_scraped: Optional[int] = Field(None, description="Number of profiles scraped", example=150)
     execution_time: Optional[float] = Field(None, description="Execution time in seconds", example=125.5)
+    stats: Optional[dict] = Field(None, description="Detailed pipeline statistics and results", example={"total_profiles_processed": 50, "profiles_marked_completed": 45})
+    profiles: Optional[list] = Field(None, description="List of scraped profiles", example=[])
     
     class Config:
         schema_extra = {
             "example": {
                 "success": True,
                 "message": "✅ Houzz pipeline completed successfully for chicago-il-us - interior-designer!",
-                "output_file": "/data/output/houzz_chicago_interior-designer_2024-01-15.xlsx",
+                "output_file": None,
                 "profiles_scraped": 150,
-                "execution_time": 125.5
+                "execution_time": 125.5,
+                "stats": {
+                    "total_profiles_processed": 150,
+                    "profiles_marked_completed": 145,
+                    "profiles_removed": 5,
+                    "invalid_emails_removed": 3,
+                    "profiles_with_valid_emails": 142,
+                    "profiles_without_emails": 3,
+                    "total_time_seconds": 125.5,
+                    "total_time_minutes": 2.09,
+                    "message": "Successfully processed 150 profiles: 145 completed, 5 removed, 3 invalid emails removed in 125.5 seconds"
+                },
+                "profiles": []
             }
         }
 
@@ -737,15 +751,24 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
             platform=request.platform
         )
         
-        execution_time = time.time() - start_time
+        execution_time = round((time.time() - start_time) / 60, 2)
         
         if output_file:
             message = f"✅ {request.platform.capitalize()} pipeline completed successfully for {validated_city} - {request.professional_type}!"
+            
+            # Extract stats and profiles from the pipeline result
+            stats = output_file if isinstance(output_file, dict) else {}
+            profiles = stats.get('profiles', []) if isinstance(stats, dict) else []
+            profiles_scraped = stats.get('total_profiles_processed', 0) if isinstance(stats, dict) else 0
+            
             return ScrapeResponse(
                 success=True,
                 message=message,
-                output_file=output_file,
-                execution_time=execution_time
+                output_file=None,  # No output file generated, just stats and profiles
+                profiles_scraped=profiles_scraped,
+                execution_time=execution_time,
+                stats=stats,
+                profiles=profiles
             )
         else:
             raise HTTPException(
