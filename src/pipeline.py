@@ -192,7 +192,6 @@ class LeadEnrichmentPipeline:
                 "profiles_removed": len(all_profiles) - len(validated_profiles),
                 "invalid_emails_removed": invalid_count,
                 "profiles_with_valid_emails": len([p for p in validated_profiles if p.emails]),
-                "profiles_without_emails": len([p for p in validated_profiles if not p.emails]),
                 "profiles": validated_profiles,  # Include the actual profile list
                 "total_time_seconds": round(total_time, 2),
                 "total_time_minutes": round(total_time / 60, 2),
@@ -755,7 +754,8 @@ class LeadEnrichmentPipeline:
             logger.info("Database manager initialized for Architizer")
 
             async with ArchitizerScraper(db_manager) as scraper:
-                profiles = await scraper.scrape_firms(start_page=start_page, max_pages=max_pages)
+                # Use default location "United States" - Architizer scrapes all firms
+                profiles = await scraper.scrape_firms(location="United States", start_page=start_page, max_pages=max_pages)
             logger.info(f"Total Architizer profiles scraped and stored: {len(profiles)}")
             return profiles
 

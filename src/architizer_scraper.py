@@ -15,7 +15,7 @@ from datetime import datetime
 
 from .models import ProfessionalProfile
 from .base_scraper import BaseScraper
-from .common_utils import WebUtils, StateManager, phone_utils, zipcode_utils
+from .common_utils import WebUtils, StateManager, phone_utils, zipcode_utils, constants
 from .email_service import email_service, EmailValidationStatus
 from .phone_formatter import validate_and_format_us_phone
 from config.config import config
@@ -56,7 +56,9 @@ class ArchitizerScraper(BaseScraper):
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
         
-        return await super().create_or_rotate_page(page, page_config)
+        page = await super().create_or_rotate_page(page, page_config)
+        await page.route('**/*', self._block_architizer_unnecessary_resources)
+        return page
 
     async def scrape_firms(self, location="United States", start_page: int = 1, max_pages: Optional[int] = None) -> List[ProfessionalProfile]:
         """Scrape firm profiles from Architizer and store them with pagination support."""
@@ -97,7 +99,6 @@ class ArchitizerScraper(BaseScraper):
         for attempt in range(max_retries):
             try:
                 page = await self.create_or_rotate_page(page)
-                await page.route('**/*', self._log_network_request)
                 
                 # Navigate to the firms page
                 url = ARCHITIZER_FIRMS_URL.format(location=quote(location))
@@ -513,11 +514,15 @@ class ArchitizerScraper(BaseScraper):
                 except Exception as e:
                     logger.debug(f"Selector {selector} failed: {e}")
                     continue
-            # Remove duplicates while preserving order
+            # Remove duplicates while preserving order and filter out unwanted URLs
             unique_urls = []
             seen = set()
             for url in firm_urls:
                 if url not in seen:
+                    # Skip the exact URL https://architizer.com/firms/ if it matches precisely
+                    if url in ['https://architizer.com/firms/', 'https://architizer.com/firms']:
+                        logger.debug(f"Skipping exact URL match: {url}")
+                        continue
                     unique_urls.append(url)
                     seen.add(url)
             
@@ -1289,6 +1294,30 @@ class ArchitizerScraper(BaseScraper):
         except Exception as e:
             logger.debug(f"Error handling cookie consent: {e}")
     
+    async def _block_architizer_unnecessary_resources(self, route):
+        """Block unnecessary resources - only allow specific URLs we need for Architizer"""
+        url = route.request.url
+        resource_type = route.request.resource_type
+        
+        # Import re for pattern matching
+        import re
+        
+        # First check if it's from an allowed domain
+        is_allowed_domain = any(domain in url.lower() for domain in constants.ALLOWED_DOMAINS)
+        if not is_allowed_domain:
+            await route.abort()
+            return
+        
+        # Check if it matches our allowed URL patterns
+        matches_allowed_pattern = any(re.match(pattern, url) for pattern in constants.ALLOWED_URL_PATTERNS)
+        
+        # Block if it doesn't match allowed patterns OR is a blocked resource type
+        if not matches_allowed_pattern or resource_type in constants.BLOCKED_RESOURCE_TYPES:
+            await route.abort()
+            return
+        
+        await route.continue_()
+
     async def _log_network_request(self, route):
         """Log network requests to understand what's being loaded"""
         request = route.request

@@ -247,10 +247,15 @@ class ScrapingConstants:
         '[class*="BusinessDetails__StyledCell"]'
     ]
     
-    # ALLOWED domains - only allow specific Houzz URLs we need
+    # ALLOWED domains - only allow specific URLs we need
     ALLOWED_DOMAINS = [
         'houzz.com',
-        'architizer.com'
+        'architizer.com',
+        'arc.ht',  # Architizer's CDN domain
+        'cdnjs.cloudflare.com',  # CDN for jQuery and other libraries
+        'cdn.ravenjs.com',  # Error tracking
+        'cdn.cookielaw.org',  # Cookie consent
+        'geolocation.onetrust.com'  # OneTrust geolocation
     ]
     
     # ALLOWED URL patterns - only allow specific patterns we need
@@ -259,10 +264,18 @@ class ScrapingConstants:
         r'https://www\.houzz\.com/professionals/.*?/.*?-.*?probr0-bo~.*?',
         # Profile pages  
         r'https://www\.houzz\.com/professionals/.*?/.*?-pfvwus-pf~.*?',
-        # Architizer pages
+        # Architizer pages - more permissive patterns
         r'https://architizer\.com/.*?',
+        r'https://.*?\.architizer\.com/.*?',
+        r'https://static-web-prod\.arc\.ht/.*?',
+        r'https://design-kit\.arc\.ht/.*?',
         # Static assets we actually need
-        r'https://.*?\.houzz\.com/.*?\.(css|js)$'
+        r'https://.*?\.houzz\.com/.*?\.(css|js)$',
+        # Essential CDN resources for Architizer
+        r'https://cdnjs\.cloudflare\.com/.*?',
+        r'https://cdn\.ravenjs\.com/.*?',
+        r'https://cdn\.cookielaw\.org/.*?',
+        r'https://geolocation\.onetrust\.com/.*?'
     ]
     
     # Blocked domains for performance (everything else)
@@ -275,7 +288,7 @@ class ScrapingConstants:
         'youtube.com', 'pinterest.com', 'tiktok.com', 'snapchat.com'
     ]
     
-    BLOCKED_RESOURCE_TYPES = ['image', 'media', 'font', 'stylesheet', 'script']
+    BLOCKED_RESOURCE_TYPES = ['image', 'media', 'font']
     
     # Logging patterns - only log the URLs we actually need
     LOG_SKIP_PATTERNS = [

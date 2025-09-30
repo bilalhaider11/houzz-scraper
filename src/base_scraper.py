@@ -114,7 +114,7 @@ class BaseScraper:
         logger.debug(f"Sleeping for {actual_delay:.2f}s")
         await asyncio.sleep(actual_delay)
 
-    async def create_or_rotate_page(self, page: Page = None) -> Page:
+    async def create_or_rotate_page(self, page: Page = None, page_config: dict = None) -> Page:
         """Create a new page with proxy support and stealth settings"""
         # Close existing page if provided
         if page:
@@ -134,6 +134,10 @@ class BaseScraper:
             'locale': 'en-US',
             'timezone_id': 'America/New_York',
         }
+        
+        # Override with custom page_config if provided
+        if page_config:
+            context_options.update(page_config)
 
         # Add proxy if available
         proxy = self.get_next_proxy()

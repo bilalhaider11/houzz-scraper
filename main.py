@@ -52,19 +52,19 @@ class ScrapeRequest(BaseModel):
         description="Platform to scrape from",
         example="houzz"
     )
-    city: str = Field(
-        ..., 
-        description="City to scrape (use format like 'chicago-il-us' or 'new-york-ny-us')",
+    city: Optional[str] = Field(
+        None, 
+        description="City to scrape (use format like 'chicago-il-us' or 'new-york-ny-us'). Required for Houzz, optional for Architizer.",
         example="chicago-il-us",
         min_length=3,
         max_length=50
     )
-    professional_type: Literal[
+    professional_type: Optional[Literal[
         "interior-designer", "architect", "general-contractor", 
         "design-build", "landscape-architect", "kitchen-and-bath", "home-builders"
-    ] = Field(
-        ..., 
-        description="Type of professional to scrape",
+    ]] = Field(
+        None, 
+        description="Type of professional to scrape. Required for Houzz, optional for Architizer.",
         example="interior-designer"
     )
     max_pages: Optional[int] = Field(
@@ -148,11 +148,9 @@ class ScrapeResponse(BaseModel):
     """Response model for scraping operations"""
     success: bool = Field(..., description="Whether the scraping operation was successful", example=True)
     message: str = Field(..., description="Human-readable status message", example="✅ Houzz pipeline completed successfully for chicago-il-us - interior-designer!")
-    output_file: Optional[str] = Field(None, description="Path to the generated output file (deprecated - use stats and profiles instead)", example=None)
     profiles_scraped: Optional[int] = Field(None, description="Number of profiles scraped", example=150)
     execution_time: Optional[float] = Field(None, description="Execution time in seconds", example=125.5)
     stats: Optional[dict] = Field(None, description="Detailed pipeline statistics and results", example={"total_profiles_processed": 50, "profiles_marked_completed": 45})
-    profiles: Optional[list] = Field(None, description="List of scraped profiles", example=[])
     
     class Config:
         schema_extra = {
@@ -718,8 +716,17 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                 detail="Platform must be 'houzz' or 'architizer'"
             )
         
-        # Validate city and professional type
-        validated_city, city_state = validate_city_and_profession(request.city, request.professional_type)
+        # Validate city and professional type based on platform
+        if request.platform == "houzz":
+            if not request.city or not request.professional_type:
+                raise HTTPException(
+                    status_code=400,
+                    detail="City and professional_type are required for Houzz platform"
+                )
+            validated_city, city_state = validate_city_and_profession(request.city, request.professional_type)
+        else:  # architizer
+            # Architizer doesn't require city/professional_type validation
+            validated_city, city_state = None, None
         
         # Validate environment
         if not validate_environment():
@@ -738,11 +745,14 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                 detail=f"Failed to initialize pipeline: {str(e)}"
             )
         
-        # Run the complete pipeline for single city and profession
-        logger.info(f"🚀 Starting {request.platform} pipeline for {validated_city} - {request.professional_type}")
+        # Run the complete pipeline
+        if request.platform == "houzz":
+            logger.info(f"🚀 Starting {request.platform} pipeline for {validated_city} - {request.professional_type}")
+        else:
+            logger.info(f"🚀 Starting {request.platform} pipeline")
         
-        # Execute the full pipeline with single city and profession
-        output_file = await pipeline.run_full_pipeline(
+        # Execute the full pipeline
+        response = await pipeline.run_full_pipeline(
             city=validated_city,
             city_state=city_state,
             professional_type=request.professional_type,
@@ -753,22 +763,23 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
         
         execution_time = round((time.time() - start_time) / 60, 2)
         
-        if output_file:
-            message = f"✅ {request.platform.capitalize()} pipeline completed successfully for {validated_city} - {request.professional_type}!"
+        if response:
+            if request.platform == "houzz":
+                message = f"✅ {request.platform.capitalize()} pipeline completed successfully for {validated_city} - {request.professional_type}!"
+            else:
+                message = f"✅ {request.platform.capitalize()} pipeline completed successfully!"
             
             # Extract stats and profiles from the pipeline result
-            stats = output_file if isinstance(output_file, dict) else {}
+            stats = response if isinstance(response, dict) else {}
             profiles = stats.get('profiles', []) if isinstance(stats, dict) else []
             profiles_scraped = stats.get('total_profiles_processed', 0) if isinstance(stats, dict) else 0
             
             return ScrapeResponse(
                 success=True,
                 message=message,
-                output_file=None,  # No output file generated, just stats and profiles
                 profiles_scraped=profiles_scraped,
                 execution_time=execution_time,
                 stats=stats,
-                profiles=profiles
             )
         else:
             raise HTTPException(
