@@ -11,13 +11,11 @@ import re
 import json
 import asyncio
 import random
-from typing import List, Optional, Dict, Any, Callable, TypeVar
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fake_useragent import UserAgent
 from loguru import logger
 from playwright.async_api import Page
-
-T = TypeVar('T')
 
 class CommonPhoneUtils:
     """Consolidated phone number utilities"""
@@ -335,51 +333,16 @@ class LoggingUtils:
     """Simplified logging utilities"""
     
     @staticmethod
-    def log_scraping_start(platform: str, location: str, profession: str, pages: int):
-        """Log scraping start"""
-        logger.info(f"🔍 Starting {platform} scraping: {profession} in {location} ({pages} pages)")
-    
-    @staticmethod
     def log_scraping_progress(page_num: int, found_count: int, location: str):
         """Log scraping progress"""
         logger.info(f"📄 Page {page_num} - Found {found_count} professionals in {location}")
     
     @staticmethod
-    def log_scraping_complete(total_found: int, location: str, profession: str):
-        """Log scraping completion"""
-        logger.info(f"✅ Scraping complete: {total_found} {profession} professionals in {location}")
-    
-    @staticmethod
     def log_profile_extracted(name: str):
         """Log profile extraction"""
         logger.debug(f"✅ Extracted: {name}")
-    
-    @staticmethod
-    def log_retry_attempt(attempt: int, max_retries: int, url: str):
-        """Log retry attempt"""
-        logger.warning(f"🔄 Retry {attempt}/{max_retries} for {url}")
-
-
-class RetryUtils:
-    """Simplified retry utilities"""
-    
-    @staticmethod
-    async def retry_async(func: Callable[..., T], *args, max_retries: int = 3, **kwargs) -> Optional[T]:
-        """Execute async function with retry logic"""
-        for attempt in range(max_retries):
-            try:
-                return await func(*args, **kwargs)
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    delay = (2 ** attempt) + random.uniform(1, 3)
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error(f"Function failed after {max_retries} attempts: {e}")
-        return None
-
 
 # Global instances for easy access
 constants = ScrapingConstants()
 nav_utils = NavigationUtils()
 log_utils = LoggingUtils()
-retry_utils = RetryUtils()

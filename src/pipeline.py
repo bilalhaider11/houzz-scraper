@@ -6,7 +6,6 @@ Integrates all components for efficient lead generation and enrichment.
 
 import asyncio
 import json
-import pandas as pd
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
@@ -81,7 +80,7 @@ class LeadEnrichmentPipeline:
             await self.extract_personal_emails_from_websites(platform=platform)
             logger.info("Website scraping phase completed")
         except Exception as e:
-            logger.error(f"Wmatches_allowed_patternebsite scraping phase failed: {e}")
+            logger.error(f"Website scraping phase failed: {e}")
             logger.info("Continuing with remaining phases...")
         
         # Step 3: Google search enrichment phase
@@ -227,27 +226,6 @@ class LeadEnrichmentPipeline:
             # If validation fails, assume email is valid to avoid false negatives
             return True
 
-    async def run_websearch_phase(self, platform: str = "houzz"):
-        """Run website scraping phase for profiles that need it"""
-        logger.info(f"Starting website scraping phase for {platform}")
-        
-        try:
-            await self.extract_personal_emails_from_websites(platform=platform)
-            logger.info("Website scraping phase completed")
-            
-        except Exception as e:
-            logger.error(f"Error in run_websearch_phase: {e}")
-    
-    async def run_google_search_phase(self, platform: str = "houzz"):
-        """Run Google search enrichment phase for profiles that need Gmail or LinkedIn information"""
-        logger.info(f"Starting Google search enrichment phase for {platform}")
-        
-        try:
-            await self.perform_google_search_enrichment(platform=platform)
-            logger.info("Google search enrichment phase completed")
-            
-        except Exception as e:
-            logger.error(f"Error in run_google_search_phase: {e}")
     
     async def extract_personal_emails_from_websites(self, platform: str = "houzz") -> None:
         """Extract personal emails from professional websites stored in database using advanced email scraping with Playwright"""

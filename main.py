@@ -13,7 +13,7 @@ Usage:
 import sys
 import os
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from loguru import logger
 
 # Add src directory to Python path for imports
@@ -21,11 +21,10 @@ SRC_PATH = Path(__file__).parent / "src"
 sys.path.insert(0, str(SRC_PATH))
 
 # FastAPI imports
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, status
+from fastapi import FastAPI, HTTPException, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, validator
-from typing import Literal
+from pydantic import BaseModel, Field
 import uvicorn
 
 # Import core modules with error handling
