@@ -233,22 +233,28 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ### 5. Test the API
 
 ```bash
-# List available states
-curl http://localhost:8000/list-states
+# Get API information
+curl http://localhost:8000/
 
-# List cities in California
-curl http://localhost:8000/list-cities/california
+# Health check
+curl http://localhost:8000/health
+
+# List available professional types
+curl http://localhost:8000/list-professional-types
 
 # Get scraping statistics
 curl http://localhost:8000/stats
+
+# Check proxy status
+curl http://localhost:8000/proxy-status
 
 # Run a test scrape
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "houzz",
-    "states": ["california"],
-    "professional_types": ["interior-designer"],
+    "location": "usa",
+    "professional_type": "interior-designer",
     "max_pages": 5
   }'
 ```
@@ -256,38 +262,21 @@ curl -X POST http://localhost:8000/scrape \
 ### 6. Production Usage
 
 ```bash
-# Full production pipeline (all states, Houzz platform)
+# Full production pipeline (USA, Houzz platform)
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "houzz",
-    "states": ["california", "texas", "florida"]
+    "location": "usa",
+    "professional_type": "interior-designer"
   }'
 
-# Specific states with ZeroBounce verification
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz",
-    "states": ["california", "texas"],
-    "professional_types": ["interior-designer", "architect"],
-    "max_pages": 25
-  }'
-
-# Skip ZeroBounce verification (faster, uses basic validation)
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz",
-    "states": ["california"],
-    "no_email_verification": true
-  }'
-
-# Architizer platform
+# Architizer platform (architectural firms)
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "architizer",
+    "location": "United States",
     "max_pages": 10
   }'
 ```
@@ -311,7 +300,8 @@ curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "houzz",
-    "states": ["california", "texas"]
+    "location": "usa",
+    "professional_type": "interior-designer"
   }'
 
 # Architizer platform
@@ -319,6 +309,7 @@ curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "architizer",
+    "location": "United States",
     "max_pages": 10
   }'
 ```
@@ -398,30 +389,17 @@ curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "houzz",
-    "states": ["california", "texas"]
+    "location": "usa",
+    "professional_type": "interior-designer"
   }'
 
-# Full pipeline without verification (faster, basic validation only)
+
+# Architizer platform (architectural firms)
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
-    "platform": "houzz",
-    "states": ["california", "texas"],
-    "no_email_verification": true
-  }'
-
-# All states, all professional types (Houzz)
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz"
-  }'
-
-# Architizer platform
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "architizer"
+    "platform": "architizer",
+    "location": "United States"
   }'
 ```
 
@@ -440,71 +418,38 @@ curl -X POST http://localhost:8000/scrape \
 
 ### Basic Usage
 ```bash
-# Production run for all states (Houzz)
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz"
-  }'
-
-# Specific states only
+# Production run for USA (Houzz)
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "houzz",
-    "states": ["california", "texas", "florida"]
+    "location": "usa",
+    "professional_type": "interior-designer",
+    "start_page": 1,
+    "max_pages": 10
   }'
-
-# Control scraping parameters
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz",
-    "states": ["florida"],
-    "max_pages": 10,
-    "start_page": 1
-  }'
-```
 
 ### Advanced Options
 ```bash
-# Skip email verification (faster)
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz",
-    "no_email_verification": true
-  }'
-
-# Specific professional types (Houzz only)
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz",
-    "professional_types": ["interior-designer", "architect"]
-  }'
-
-# Custom scraping parameters
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "houzz",
-    "states": ["california"],
-    "max_pages": 15,
-    "start_page": 3
-  }'
-
-# Architizer platform with pagination
+# Architizer platform (no professional_type required)
 curl -X POST http://localhost:8000/scrape \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "architizer",
-    "start_page": 1,
-    "max_pages": 5
+    "location": "United States",
+    "max_pages": 5,
+    "start_page": 1
   }'
+
 
 # Check scraping progress statistics
 curl http://localhost:8000/stats
+
+# Get available professional types
+curl http://localhost:8000/list-professional-types
+
+# Check proxy status
+curl http://localhost:8000/proxy-status
 ```
 
 ### Platform-Specific Pagination
@@ -587,7 +532,13 @@ The `professionals` table includes the following columns:
 | `zip_code` | TEXT | ZIP code |
 | `rating` | REAL | Professional rating |
 | `reviews_count` | INTEGER | Number of reviews |
-| `social_links` | TEXT | JSON string of social media links |
+| `linkedin_links` | TEXT | JSON array of LinkedIn URLs |
+| `facebook_links` | TEXT | JSON array of Facebook URLs |
+| `instagram_links` | TEXT | JSON array of Instagram URLs |
+| `twitter_links` | TEXT | JSON array of Twitter/X URLs |
+| `pinterest_links` | TEXT | JSON array of Pinterest URLs |
+| `youtube_links` | TEXT | JSON array of YouTube URLs |
+| `other_social_links` | TEXT | JSON array of other social media URLs |
 | `typical_job_cost` | TEXT | Typical job cost range |
 | `followers_count` | INTEGER | Number of followers |
 | `is_email_verified` | INTEGER | Email verification status (0/1) |
@@ -640,11 +591,13 @@ houzz-scraper/
 ├── requirements.txt        # Python dependencies
 ├── deploy.sh              # Deployment script
 ├── env.example            # Environment variables template (copy to .env)
-├── test_fastapi.py        # API test script
 ├── README.md              # Complete documentation (single source of truth)
 ├── Dockerfile             # Docker container configuration
 ├── .dockerignore          # Docker ignore file
 ├── cloudbuild.yaml        # Google Cloud Build configuration
+├── docker-compose.yml     # Docker Compose configuration
+├── docker-compose.dev.yml # Development Docker Compose
+├── dev.sh                 # Development script
 ├── config/
 │   └── config.py          # Configuration settings
 ├── src/
@@ -665,6 +618,71 @@ houzz-scraper/
 ├── data/                  # Output CSV files and SQLite database
 │   └── scraper.db         # SQLite database (created automatically)
 └── logs/                  # Log files
+```
+
+## 🔌 API Endpoints
+
+The FastAPI application provides the following endpoints:
+
+### General Endpoints
+- **GET `/`** - API information and status
+- **GET `/health`** - Health check endpoint
+
+### Professional Types
+- **GET `/list-professional-types`** - List all available professional types
+
+### Statistics & Monitoring
+- **GET `/stats`** - Get scraping statistics and progress
+- **GET `/proxy-status`** - Get proxy rotation status and configuration
+
+### Scraping Operations
+- **POST `/scrape`** - Start a scraping job with the complete 4-phase pipeline
+
+### Request/Response Models
+
+#### ScrapeRequest
+```json
+{
+  "platform": "houzz|architizer",
+  "location": "string",
+  "professional_type": "string (required for Houzz, optional for Architizer)",
+  "max_pages": 50,
+  "start_page": 1
+}
+```
+
+#### ScrapeResponse
+```json
+{
+  "success": true,
+  "message": "string",
+  "profiles_scraped": 150,
+  "execution_time": 125.5,
+  "stats": {
+    "total_profiles_processed": 150,
+    "profiles_marked_completed": 145,
+    "profiles_removed": 5,
+    "invalid_emails_removed": 3,
+    "profiles": []
+    "profiles_with_valid_emails": 142,
+    "profiles_without_emails": 3
+  }
+}
+```
+
+#### StatsResponse
+```json
+{
+  "stats": {
+    "total_profiles": 1250,
+    "websites_scraped": 890,
+    "google_searches_done": 450,
+    "completed_profiles": 1200,
+    "websites_pending": 50,
+    "google_searches_pending": 25,
+    "profiles_pending_completion": 30
+  }
+}
 ```
 
 ## 🐳 Docker Deployment
@@ -738,6 +756,29 @@ OUTPUT_DIR=data
 LOG_DIR=logs
 ```
 
+### Configuration Features
+
+The system supports comprehensive configuration through `config/config.py`:
+
+#### Location Support
+- **USA Nationwide**: `location: "usa"` for all US states
+- **State-Specific**: Individual states like `"california"`, `"texas"`, `"florida"`
+- **City-Specific**: Major cities within states (automatically mapped)
+
+#### Professional Types (Houzz)
+- `interior-designer` - Interior Designers
+- `architect` - Architects  
+- `general-contractor` - General Contractors
+- `design-build` - Design-Build Firms
+- `landscape-architect` - Landscape Architects
+- `kitchen-and-bath` - Kitchen & Bath Designers
+- `home-builders` - Home Builders
+- `fireplace` - Fireplace Specialists
+
+#### Platform Support
+- **Houzz**: Requires `location` and `professional_type`
+- **Architizer**: Requires `location` only (scrapes architectural firms)
+
 ### Email Prioritization Logic
 
 The system prioritizes emails in the following order:
@@ -768,7 +809,13 @@ The system prioritizes emails in the following order:
 | `phone` | Phone number (formatted) |
 | `address` | Full address |
 | `professional_type` | Type of professional |
-| `social_links` | JSON string of social media links |
+| `linkedin_links` | JSON array of LinkedIn URLs |
+| `facebook_links` | JSON array of Facebook URLs |
+| `instagram_links` | JSON array of Instagram URLs |
+| `twitter_links` | JSON array of Twitter/X URLs |
+| `pinterest_links` | JSON array of Pinterest URLs |
+| `youtube_links` | JSON array of YouTube URLs |
+| `other_social_links` | JSON array of other social media URLs |
 | `is_email_verified` | Email verification status |
 | `zip_code` | ZIP code |
 | `website_scraped` | Website scraping status |
@@ -872,8 +919,8 @@ Recent testing showed excellent performance:
 
 ### CSV File Format
 ```csv
-profile_url,name,website,emails,phone,address,professional_type,social_links,is_email_verified,zip_code,website_scraped,google_search_done,created_at,updated_at
-https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":[""john.smith@gmail.com""],""business"":[""info@example.com""]}",+15551234567,123 Main St,interior-designer,"{""linkedin"":""https://linkedin.com/in/johnsmith""}",1,90210,1,1,2024-01-15T10:30:00,2024-01-15T10:30:00
+profile_url,name,website,emails,phone,address,professional_type,linkedin_links,facebook_links,instagram_links,twitter_links,pinterest_links,youtube_links,other_social_links,is_email_verified,zip_code,website_scraped,google_search_done,created_at,updated_at
+https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":[""john.smith@gmail.com""],""business"":[""info@example.com""]}",+15551234567,123 Main St,interior-designer,"[""https://linkedin.com/in/johnsmith""]","[""https://facebook.com/johnsmith""]","[""https://instagram.com/johnsmith""]","[""https://twitter.com/johnsmith""]","[""https://pinterest.com/johnsmith""]","[""https://youtube.com/johnsmith""]","[]",1,90210,1,1,2024-01-15T10:30:00,2024-01-15T10:30:00
 ```
 
 ## 🐛 Troubleshooting
@@ -893,10 +940,16 @@ https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":
 4. **"Environment file not found"**
    - Solution: Copy `env.example` to `.env` and configure your API keys
 
-5. **"Rate limit exceeded"**
+5. **"Invalid location"**
+   - Solution: Use valid locations like `"usa"`, `"california"`, `"texas"`, etc. Check available locations in config
+
+6. **"Invalid professional type"**
+   - Solution: Use valid professional types like `"interior-designer"`, `"architect"`, etc. Check available types with `/list-professional-types`
+
+7. **"Rate limit exceeded"**
    - Solution: Increase delays in config or use proxy service
 
-6. **"Database locked"**
+8. **"Database locked"**
    - Solution: Ensure no other processes are accessing the database
 
 ### Check System Status

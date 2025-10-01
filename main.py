@@ -134,6 +134,18 @@ class ScrapeResponse(BaseModel):
                     "profiles_removed": 5,
                     "invalid_emails_removed": 3,
                     "profiles_with_valid_emails": 142,
+                    "profiles": [
+                        {
+                            "name": "John Doe",
+                            "emails": ["john.doe@example.com"],
+                            "profile_url": "https://www.houzz.com/pro/john-doe"
+                        },
+                        {
+                            "name": "Jane Doe",
+                            "emails": ["jane.doe@example.com"],
+                            "profile_url": "https://www.houzz.com/pro/jane-doe"
+                        }
+                    ],
                     "profiles_without_emails": 3,
                     "total_time_seconds": 125.5,
                     "total_time_minutes": 2.09,
