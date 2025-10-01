@@ -15,7 +15,6 @@ from .houzz_scraper import HouzzScraper
 from .website_scraper import PersonalEmailExtractor
 from .models import ProfessionalProfile
 from .google_searcher import GoogleSearcher
-from .common_utils import StateManager
 from .database_manager import DatabaseManager
 from .zerobounce_verifier import ZeroBounceVerifier
 from .architizer_scraper import ArchitizerScraper
@@ -26,7 +25,6 @@ class LeadEnrichmentPipeline:
     """Main pipeline for scraping and enriching leads from Houzz"""
     
     def __init__(self):
-        self.state_manager = StateManager()
         self.setup_logging()
         self.setup_directories()
         
@@ -91,119 +89,19 @@ class LeadEnrichmentPipeline:
             logger.error(f"Google search enrichment phase failed: {e}")
             logger.info("Continuing with remaining phases...")
         
-        # Step 4: Email validation and stats generation
-        logger.info("Phase 4: Email validation via ZeroBounce and stats generation")
+        # Step 4: Email validation and processing (with smart email selection)
+        logger.info("Phase 4: Email validation and processing with smart email selection")
         try:
-            # Get only incomplete profiles from database for validation
-            db_manager = DatabaseManager()
-            all_profiles_data = db_manager.get_all_profiles_for_export(platform, limit=10000)  # Get all incomplete profiles
-            
-            # Convert to ProfessionalProfile objects
-            from .models import ProfessionalProfile
-            all_profiles = []
-            for profile_data in all_profiles_data:
-                profile = ProfessionalProfile(
-                    id=profile_data['id'],
-                    name=profile_data['name'],
-                    profile_url=profile_data['profile_url'],
-                    professional_type=profile_data['professional_type'],
-                    website=profile_data['website'],
-                    phone=profile_data['phone'],
-                    emails=profile_data['emails'],
-                    platform=profile_data['platform'],
-                    is_email_verified=profile_data['is_email_verified']
-                )
-                all_profiles.append(profile)
-            
-            if not all_profiles:
-                logger.info("No profiles found in database for validation")
-                stats = {
-                    "total_profiles_processed": 0,
-                    "profiles_marked_completed": 0,
-                    "profiles_removed": 0,
-                    "invalid_emails_removed": 0,
-                    "profiles_with_valid_emails": 0,
-                    "profiles_without_emails": 0,
-                    "profiles": [],  # Empty profile list
-                    "total_time_seconds": 0,
-                    "total_time_minutes": 0,
-                    "message": "No profiles to validate"
-                }
-                return stats
-            
-            logger.info(f"🔍 Validating {len(all_profiles)} profiles via ZeroBounce...")
-            
-            # Validate emails and remove invalid ones
-            validated_profiles = []
-            invalid_count = 0
-            
-            for profile in all_profiles:
-                if profile.emails:
-                    try:
-                        # Parse existing emails
-                        emails_json = json.loads(profile.emails) if isinstance(profile.emails, str) else profile.emails
-                        validated_emails = []
-                        
-                        # Validate each email
-                        for email_data in emails_json:
-                            email = email_data.get('email', '')
-                            if email:
-                                # Validate with ZeroBounce
-                                is_valid = await self._validate_email_with_zerobounce(email)
-                                if is_valid:
-                                    validated_emails.append(email_data)
-                                else:
-                                    invalid_count += 1
-                                    logger.info(f"❌ Invalid email removed: {email} from {profile.name}")
-                        
-                        # Update profile with validated emails
-                        if validated_emails:
-                            profile.emails = json.dumps(validated_emails)
-                            validated_profiles.append(profile)
-                            
-                            # Update database with validated emails and mark as completed
-                            await db_manager.update_profile_field(profile.id, 'emails', json.dumps(validated_emails))
-                            db_manager.mark_profile_completed(profile.id)
-                            db_manager.mark_email_verified(profile.id)
-                            logger.info(f"✅ Marked profile {profile.name} as completed with {len(validated_emails)} valid emails")
-                        else:
-                            # Remove profile if no valid emails
-                            await db_manager.remove_profile(profile.id)
-                            logger.info(f"🗑️ Removed profile {profile.name} - no valid emails")
-                            
-                    except Exception as e:
-                        logger.error(f"Error validating emails for {profile.name}: {e}")
-                        validated_profiles.append(profile)  # Keep profile if validation fails
-                else:
-                    # Mark profiles without emails as removed (no email validation needed)
-                    await db_manager.remove_profile(profile.id)
-                    logger.info(f"🗑️ Removed profile {profile.name} (no emails to validate)")
-            
-            # Calculate total time
-            end_time = datetime.now()
-            total_time = (end_time - start_time).total_seconds()
-            
-            # Generate comprehensive stats with profile list
-            stats = {
-                "total_profiles_processed": len(all_profiles),
-                "profiles_marked_completed": len(validated_profiles),
-                "profiles_removed": len(all_profiles) - len(validated_profiles),
-                "invalid_emails_removed": invalid_count,
-                "profiles_with_valid_emails": len([p for p in validated_profiles if p.emails]),
-                "profiles": validated_profiles,  # Include the actual profile list
-                "total_time_seconds": round(total_time, 2),
-                "total_time_minutes": round(total_time / 60, 2),
-                "message": f"Successfully processed {len(all_profiles)} profiles: {len(validated_profiles)} completed, {len(all_profiles) - len(validated_profiles)} removed, {invalid_count} invalid emails removed in {round(total_time, 2)} seconds"
-            }
-            
-            logger.info(f"✅ Email validation complete: {stats}")
+            stats = await self.validate_and_process_emails(platform=platform)
+            logger.info(f"✅ Email validation and processing complete")
             return stats
             
         except Exception as e:
             logger.error(f"Email validation phase failed: {e}")
             stats = {
-                "total_profiles": len(profiles) if profiles else 0,
-                "validated_profiles": 0,
+                "total_profiles_processed": 0,
+                "profiles_marked_completed": 0,
+                "profiles_removed": 0,
                 "invalid_emails_removed": 0,
                 "error": str(e),
                 "message": "Email validation failed"
@@ -224,6 +122,206 @@ class LeadEnrichmentPipeline:
             logger.error(f"ZeroBounce validation error for {email}: {e}")
             # If validation fails, assume email is valid to avoid false negatives
             return True
+
+    def _select_best_emails(self, emails_json: dict) -> Optional[List[str]]:
+        """
+        Select the best emails (max 2, min 1) from personal and business emails.
+        Priority: Personal emails first, then business emails if needed.
+        
+        Args:
+            emails_json: Dictionary with 'personal' and 'business' email lists
+        
+        Returns:
+            List of selected emails (1-2 emails), or None if no emails available
+        """
+        try:
+            personal_emails = emails_json.get('personal', []) if isinstance(emails_json, dict) else []
+            business_emails = emails_json.get('business', []) if isinstance(emails_json, dict) else []
+            
+            selected_emails = []
+            
+            # Step 1: Prioritize personal emails (take up to 2)
+            if personal_emails:
+                selected_emails.extend(personal_emails[:2])
+            
+            # Step 2: If we have less than 2 emails, add business emails
+            if len(selected_emails) < 2 and business_emails:
+                remaining_slots = 2 - len(selected_emails)
+                selected_emails.extend(business_emails[:remaining_slots])
+            
+            # Return None if no emails found (will trigger profile removal)
+            return selected_emails if selected_emails else None
+            
+        except Exception as e:
+            logger.error(f"Error selecting best emails: {e}")
+            return None
+
+    async def validate_and_process_emails(self, platform: str = "houzz") -> Dict[str, Any]:
+        """
+        Step 4: Email validation and processing phase.
+        - Validates emails via ZeroBounce
+        - Selects max 2 emails (min 1 required) with priority: personal > business
+        - Removes profiles with no valid emails
+        - Marks validated profiles as completed
+        
+        Args:
+            platform: Platform to process (default: "houzz")
+        
+        Returns:
+            Dictionary with processing statistics
+        """
+        logger.info("Phase 4: Email validation and processing")
+        start_time = datetime.now()
+        db_manager = None
+        
+        try:
+            db_manager = DatabaseManager()
+            
+            # Get profiles that need email validation
+            all_profiles_data = db_manager.get_all_profiles_for_export(platform, limit=10000)
+            
+            # Convert to ProfessionalProfile objects
+            all_profiles = []
+            for profile_data in all_profiles_data:
+                profile = ProfessionalProfile(
+                    id=profile_data['id'],
+                    name=profile_data['name'],
+                    profile_url=profile_data['profile_url'],
+                    professional_type=profile_data['professional_type'],
+                    website=profile_data['website'],
+                    phone=profile_data['phone'],
+                    emails=profile_data['emails'],
+                    platform=profile_data['platform'],
+                    is_email_verified=profile_data['is_email_verified']
+                )
+                all_profiles.append(profile)
+            
+            if not all_profiles:
+                logger.info("No profiles found in database for validation")
+                return {
+                    "total_profiles_processed": 0,
+                    "profiles_marked_completed": 0,
+                    "profiles_removed": 0,
+                    "invalid_emails_removed": 0,
+                    "profiles_with_valid_emails": 0,
+                    "profiles": [],
+                    "total_time_seconds": 0,
+                    "total_time_minutes": 0,
+                    "message": "No profiles to validate"
+                }
+            
+            logger.info(f"🔍 Processing {len(all_profiles)} profiles for email validation...")
+            
+            # Process each profile
+            validated_profiles = []
+            profiles_removed = 0
+            invalid_emails_removed_count = 0
+            
+            for profile in all_profiles:
+                if profile.emails:
+                    try:
+                        # Parse existing emails
+                        emails_json = json.loads(profile.emails) if isinstance(profile.emails, str) else profile.emails
+                        
+                        # Extract all emails for validation
+                        personal_emails = emails_json.get('personal', []) if isinstance(emails_json, dict) else []
+                        business_emails = emails_json.get('business', []) if isinstance(emails_json, dict) else []
+                        
+                        # Validate personal emails
+                        validated_personal = []
+                        for email in personal_emails:
+                            is_valid = await self._validate_email_with_zerobounce(email)
+                            if is_valid:
+                                validated_personal.append(email)
+                            else:
+                                invalid_emails_removed_count += 1
+                                logger.info(f"❌ Invalid personal email removed: {email} from {profile.name}")
+                        
+                        # Validate business emails
+                        validated_business = []
+                        for email in business_emails:
+                            is_valid = await self._validate_email_with_zerobounce(email)
+                            if is_valid:
+                                validated_business.append(email)
+                            else:
+                                invalid_emails_removed_count += 1
+                                logger.info(f"❌ Invalid business email removed: {email} from {profile.name}")
+                        
+                        # Create validated emails JSON
+                        validated_emails_json = {
+                            'personal': validated_personal,
+                            'business': validated_business
+                        }
+                        
+                        # Select best emails (max 2, min 1) - prioritize personal over business
+                        selected_emails = self._select_best_emails(validated_emails_json)
+                        
+                        if selected_emails:
+                            # Update profile with selected emails
+                            profile.emails = selected_emails
+                            validated_profiles.append(profile)
+                            
+                            # Update database with validated emails and mark as completed
+                            await db_manager.update_profile_field(profile.id, 'emails', json.dumps(validated_emails_json))
+                            db_manager.mark_profile_completed(profile.id)
+                            db_manager.mark_email_verified(profile.id)
+                            
+                            logger.info(f"✅ {profile.name}: Selected {len(validated_emails_json)} email(s): {validated_emails_json}")
+                        else:
+                            # Remove profile if no valid emails
+                            await db_manager.remove_profile(profile.id)
+                            profiles_removed += 1
+                            logger.info(f"🗑️ Removed {profile.name} - no valid emails after validation")
+                    
+                    except Exception as e:
+                        logger.error(f"Error processing emails for {profile.name}: {e}")
+                else:
+                    # Remove profiles without any emails
+                    await db_manager.remove_profile(profile.id)
+                    profiles_removed += 1
+                    logger.info(f"🗑️ Removed {profile.name} - no emails to validate")
+            
+            # Calculate statistics
+            end_time = datetime.now()
+            total_time = (end_time - start_time).total_seconds()
+            
+            # Create simplified profile list with only name, emails, and profile_url
+            simplified_profiles = []
+            for profile in validated_profiles:
+                simplified_profiles.append({
+                    "name": profile.name,
+                    "emails": profile.emails,
+                    "profile_url": profile.profile_url
+                })
+            
+            stats = {
+                "total_profiles_processed": len(all_profiles),
+                "profiles_marked_completed": len(validated_profiles),
+                "profiles_removed": profiles_removed,
+                "invalid_emails_removed": invalid_emails_removed_count,
+                "profiles_with_valid_emails": len([p for p in validated_profiles if p.emails]),
+                "profiles": simplified_profiles,
+                "total_time_seconds": round(total_time, 2),
+                "total_time_minutes": round(total_time / 60, 2),
+                "message": f"Successfully processed {len(all_profiles)} profiles: {len(validated_profiles)} completed, {profiles_removed} removed, {invalid_emails_removed_count} invalid emails removed"
+            }
+            
+            logger.info(f"✅ Email validation complete: {stats['message']} in {stats['total_time_seconds']} seconds")
+            return stats
+        
+        except Exception as e:
+            logger.error(f"Email validation phase failed: {e}")
+            return {
+                "total_profiles_processed": 0,
+                "profiles_marked_completed": 0,
+                "profiles_removed": 0,
+                "invalid_emails_removed": 0,
+                "error": str(e),
+                "message": "Email validation failed"
+            }
+        finally:
+            if db_manager:
+                db_manager.close()
 
     
     async def extract_personal_emails_from_websites(self, platform: str = "houzz") -> None:
@@ -630,96 +728,6 @@ class LeadEnrichmentPipeline:
         finally:
             if db_manager:
                 db_manager.close()
-
-    async def run_export_phase(self, platform: str = "houzz") -> str:
-        """Run the CSV export phase with ZeroBounce email verification"""
-        logger.info("Starting export phase with ZeroBounce email verification")
-        
-        db_manager = DatabaseManager()
-        
-        try:
-            # Step 1: ZeroBounce email verification (always enabled)
-            logger.info("Running ZeroBounce email verification")
-            try:
-                async with ZeroBounceVerifier() as zerobounce:
-                    await zerobounce.verify_database_emails(db_manager, platform)
-            except Exception as e:
-                logger.warning(f"ZeroBounce email verification failed: {e}")
-                logger.info("Continuing with export without email verification")
-            
-            # Step 2: Check if there are any profiles to export
-            total_profiles = db_manager.get_total_profiles_for_export_count(platform=platform)
-            
-            if total_profiles == 0:
-                logger.info(f"No profiles found to export for platform '{platform}' (all profiles are already completed or none exist)")
-                return ""
-            
-            batch_size = 1000  # Process in batches of 1000
-            all_contacts = []
-            exported_profile_ids = []
-
-            logger.info(f"Found {total_profiles} profiles to export (not yet completed)")
-            
-            for offset in range(0, total_profiles, batch_size):
-                profiles = db_manager.get_all_profiles_for_export(platform, limit=batch_size, offset=offset)
-                all_contacts.extend(profiles)
-                # Track profile IDs for marking as completed
-                exported_profile_ids.extend([profile['id'] for profile in profiles])
-
-            # Construct DataFrame from all contacts
-            df = pd.DataFrame(all_contacts)
-
-            # Reorder columns for specific platform exports
-            if platform == "architizer":
-                # Define the exact column order for Architizer export with new social media columns
-                architizer_columns = [
-                    'profile_url', 'name', 'website', 'emails', 'phone', 'address', 
-                    'professional_type', 'linkedin_links', 'facebook_links', 'instagram_links', 
-                    'twitter_links', 'pinterest_links', 'youtube_links', 'other_social_links',
-                    'is_email_verified', 'zip_code', 'website_scraped', 'google_search_done', 
-                    'created_at', 'updated_at'
-                ]
-                
-                # Filter DataFrame to only include the requested columns in the specified order
-                available_columns = [col for col in architizer_columns if col in df.columns]
-                df = df[available_columns]
-                
-                logger.info(f"Exported Architizer data with {len(available_columns)} columns: {available_columns}")
-            else:
-                # For other platforms (like Houzz), ensure social media columns are included
-                social_columns = ['linkedin_links', 'facebook_links', 'instagram_links', 
-                                 'twitter_links', 'pinterest_links', 'youtube_links', 'other_social_links']
-                
-                # Check if social columns exist in the DataFrame
-                existing_social_columns = [col for col in social_columns if col in df.columns]
-                if existing_social_columns:
-                    logger.info(f"Exporting {platform} data with social media columns: {existing_social_columns}")
-                else:
-                    logger.warning(f"No social media columns found in {platform} export data")
-
-            # Export DataFrame to CSV
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{platform}_export_{timestamp}.csv"
-            filepath = Path(config.OUTPUT_DIR) / filename
-            df.to_csv(filepath, index=False)
-            
-            # Mark all exported profiles as completed
-            logger.info(f"Marking {len(exported_profile_ids)} profiles as completed")
-            for profile_id in exported_profile_ids:
-                try:
-                    db_manager.mark_profile_completed(profile_id)
-                    logger.debug(f"✅ Marked profile {profile_id} as completed")
-                except Exception as e:
-                    logger.error(f"❌ Failed to mark profile {profile_id} as completed: {e}")
-
-            logger.info(f"Successfully exported verified data to {filepath}")
-            return str(filepath)
-
-        except Exception as e:
-            logger.error(f"Error in run_export_phase: {e}")
-            return ""
-        finally:
-            db_manager.close()
 
     async def scrape_architizer_profiles(self, max_pages: Optional[int] = None, start_page: int = 1) -> List[ProfessionalProfile]:
         profiles = []
