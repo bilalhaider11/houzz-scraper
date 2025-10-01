@@ -66,7 +66,7 @@ class LeadEnrichmentPipeline:
             logger.info(f"Scraped {len(profiles)} Houzz profiles for location '{location}' - {professional_type}")
         elif platform == "architizer":
             logger.info("Phase 1: Scraping Architizer profiles")
-            profiles = await self.scrape_architizer_profiles(max_pages=max_pages, start_page=start_page)
+            profiles = await self.scrape_architizer_profiles(location=location, max_pages=max_pages, start_page=start_page)
             logger.info(f"Scraped {len(profiles)} Architizer profiles")
         else:
             raise ValueError(f"Unsupported platform: {platform}")
@@ -729,7 +729,7 @@ class LeadEnrichmentPipeline:
             if db_manager:
                 db_manager.close()
 
-    async def scrape_architizer_profiles(self, max_pages: Optional[int] = None, start_page: int = 1) -> List[ProfessionalProfile]:
+    async def scrape_architizer_profiles(self, location: str, max_pages: Optional[int] = None, start_page: int = 1) -> List[ProfessionalProfile]:
         profiles = []
         db_manager = None
         
@@ -740,7 +740,7 @@ class LeadEnrichmentPipeline:
 
             async with ArchitizerScraper(db_manager) as scraper:
                 # Use default location "United States" - Architizer scrapes all firms
-                profiles = await scraper.scrape_firms(location="United States", start_page=start_page, max_pages=max_pages)
+                profiles = await scraper.scrape_firms(location=location, start_page=start_page, max_pages=max_pages)
             logger.info(f"Total Architizer profiles scraped and stored: {len(profiles)}")
             return profiles
 

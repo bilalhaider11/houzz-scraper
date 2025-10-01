@@ -60,14 +60,14 @@ class ArchitizerScraper(BaseScraper):
         await page.route('**/*', self._block_architizer_unnecessary_resources)
         return page
 
-    async def scrape_firms(self, location="United States", start_page: int = 1, max_pages: Optional[int] = None) -> List[ProfessionalProfile]:
+    async def scrape_firms(self, location: str, start_page: int = 1, max_pages: Optional[int] = None) -> List[ProfessionalProfile]:
         """Scrape firm profiles from Architizer and store them with pagination support."""
         logger.info(f"Starting Architizer scrape for {location} with pagination: start_page={start_page}, max_pages={max_pages}")
         
         # Use the new enhanced scraping method with load more functionality and pagination
         return await self.scrape_firms_with_load_more(location=location, start_page=start_page, max_pages=max_pages)
     
-    async def scrape_firms_with_load_more(self, location="United States", start_page: int = 1, max_pages: Optional[int] = None) -> List[ProfessionalProfile]:
+    async def scrape_firms_with_load_more(self, location: str, start_page: int = 1, max_pages: Optional[int] = None) -> List[ProfessionalProfile]:
         """Comprehensive scraping with load more pagination - Two-phase approach"""
         logger.info(f"Starting comprehensive Architizer scrape for {location} with pagination: start_page={start_page}, max_pages={max_pages}")
         

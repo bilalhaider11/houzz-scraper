@@ -682,6 +682,12 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                     status_code=400,
                     detail=f"Invalid professional type: {request.professional_type}. Available types: {config.PROFESSIONAL_TYPES}"
                 )
+
+            # Normalize location input (handle USA variations)
+            location_lower = request.location.lower().strip()
+            # Normalize United States and USA variations to 'usa'
+            if location_lower in ['united states', 'usa', 'us']:
+                request.location = 'usa'
             # Validate location exists in LOCATION_REGION_MAP
             if request.location not in config.LOCATION_REGION_MAP:
                 available_locations = list(config.LOCATION_REGION_MAP.keys())
@@ -689,13 +695,24 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                     status_code=400,
                     detail=f"Invalid location: {request.location}. Available locations: {available_locations}"
                 )
-        else:  # architizer
+        elif request.platform == "architizer":  # architizer
             # Architizer doesn't require location/professional_type validation
             if not request.location:
                 raise HTTPException(
                     status_code=400,
                     detail="location is required for Architizer platform"
                 )
+
+            # Normalize location input (handle USA variations)
+            location_lower = request.location.lower().strip()
+            # Normalize United States and USA variations to 'usa'
+            if location_lower in ['united states', 'usa', 'us']:
+                request.location = 'United States'
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid platform. Must be 'houzz' or 'architizer'"
+            )
         
         # Validate environment
         if not validate_environment():
