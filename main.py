@@ -13,7 +13,7 @@ Usage:
 import sys
 import os
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal
 from loguru import logger
 
 # Add src directory to Python path for imports
@@ -92,37 +92,6 @@ class ScrapeRequest(BaseModel):
             }
         }
 
-class CityInfo(BaseModel):
-    """Individual city information"""
-    name: str = Field(..., description="Formatted city name", example="Chicago")
-    region_id: str = Field(..., description="Region ID for scraping", example="12345")
-    city_info: str = Field(..., description="City identifier for API calls", example="chicago-il-us")
-
-class ListCitiesResponse(BaseModel):
-    """Response model for listing cities"""
-    state: str = Field(..., description="State name", example="Illinois")
-    cities: List[CityInfo] = Field(..., description="List of cities in the state")
-    total_count: int = Field(..., description="Total number of cities", example=25)
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "state": "Illinois",
-                "cities": [
-                    {
-                        "name": "Chicago",
-                        "region_id": "12345",
-                        "city_info": "chicago-il-us"
-                    },
-                    {
-                        "name": "Springfield",
-                        "region_id": "12346", 
-                        "city_info": "springfield-il-us"
-                    }
-                ],
-                "total_count": 2
-            }
-        }
 
 class StatsResponse(BaseModel):
     """Response model for statistics"""
@@ -215,10 +184,9 @@ app = FastAPI(
     - 🔄 **Proxy Rotation**: Built-in proxy support for large-scale scraping
     
     ### Getting Started:
-    1. Use `/list-all-cities` to see available cities
-    2. Use `/list-professional-types` to see available professions
-    3. Use `/scrape` to start a scraping job
-    4. Monitor progress with `/stats`
+    1. Use `/list-professional-types` to see available professions
+    2. Use `/scrape` to start a scraping job
+    3. Monitor progress with `/stats`
     """,
     version="2.0.0",
     docs_url="/docs",
@@ -229,20 +197,16 @@ app = FastAPI(
             "description": "General API information and health checks"
         },
         {
-            "name": "Cities",
-            "description": "City and location management endpoints"
-        },
-        {
             "name": "Professions", 
             "description": "Professional type management endpoints"
         },
         {
-            "name": "Scraping",
-            "description": "Core scraping and pipeline operations"
-        },
-        {
             "name": "Statistics",
             "description": "Statistics and monitoring endpoints"
+        },
+        {
+            "name": "Scraping",
+            "description": "Core scraping and pipeline operations"
         },
         {
             "name": "System",
@@ -366,64 +330,6 @@ async def health_check():
     """
     return {"status": "healthy", "message": "API is running"}
 
-@app.get(
-    "/list-cities/{state}", 
-    response_model=ListCitiesResponse,
-    tags=["Cities"],
-    summary="List Cities by State",
-    description="Get all available cities for a specific state that can be used for scraping"
-)
-async def list_cities(state: str):
-    """
-    ## List Cities by State
-    
-    Returns all available cities for a specific state that can be used in scraping operations.
-    
-    **Parameters:**
-    - `state`: State identifier (e.g., 'illinois', 'california', 'new-york')
-    
-    **Returns:**
-    - List of cities with their formatted names, region IDs, and city identifiers
-    - Total count of cities available
-    """
-    try:
-        if state not in config.STATE_CITY_REGIONS:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No cities found for state '{state}'"
-            )
-        
-        cities = config.STATE_CITY_REGIONS[state]
-        formatted_state = state.replace('-', ' ').title()
-        
-        # Format cities for response
-        formatted_cities = []
-        for city_info, region_id in cities:
-            # Extract city name from the city_info (format: "city-name-state-us")
-            city_parts = city_info.split('-')
-            if len(city_parts) > 2:
-                # Remove the last two parts (state and country)
-                city_name = ' '.join(city_parts[:-2])
-            else:
-                # Only remove the last part (country)
-                city_name = ' '.join(city_parts[:-1])
-            city_name = city_name.replace('-', ' ').title()
-            formatted_cities.append({
-                "name": city_name,
-                "region_id": region_id,
-                "city_info": city_info
-            })
-        
-        return ListCitiesResponse(
-            state=formatted_state,
-            cities=formatted_cities,
-            total_count=len(formatted_cities)
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error listing cities for {state}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list cities: {str(e)}")
 
 @app.get(
     "/list-professional-types", 
@@ -462,52 +368,56 @@ async def list_professional_types():
         logger.error(f"Error listing professional types: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list professional types: {str(e)}")
 
+
+
 @app.get(
-    "/list-all-cities", 
+    "/proxy-status", 
     response_model=Dict[str, Any],
-    tags=["Cities"],
-    summary="List All Cities",
-    description="Get all available cities across all states for scraping"
+    tags=["System"],
+    summary="Get Proxy Status",
+    description="Get proxy rotation status and configuration information"
 )
-async def list_all_cities():
+async def get_proxy_status():
     """
-    ## List All Cities
+    ## Get Proxy Status
     
-    Returns all available cities across all states that can be used in scraping operations.
+    Returns information about proxy rotation configuration and current status.
     
     **Returns:**
-    - Complete list of cities with their details
-    - State information for each city
-    - Total count of available cities
-    - List of all available states
+    - Proxy rotation enabled/disabled status
+    - Proxy rotation interval settings
+    - Proxy authentication configuration status
+    - Current proxy statistics (if rotation is enabled)
+    - Total number of available proxies
     """
     try:
-        all_cities = []
-        for state, cities in config.STATE_CITY_REGIONS.items():
-            for city_info, region_id in cities:
-                # Extract city name from the city_info
-                city_parts = city_info.split('-')
-                if len(city_parts) > 2:
-                    city_name = ' '.join(city_parts[:-2])
-                else:
-                    city_name = ' '.join(city_parts[:-1])
-                city_name = city_name.replace('-', ' ').title()
-                
-                all_cities.append({
-                    "city_info": city_info,
-                    "city_name": city_name,
-                    "state": state,
-                    "region_id": region_id
-                })
+        # Create a temporary scraper instance to get proxy stats
+        from src.houzz_scraper import HouzzScraper
         
-        return {
-            "cities": all_cities,
-            "total_count": len(all_cities),
-            "states": list(config.STATE_CITY_REGIONS.keys())
+        # Initialize scraper to get proxy information
+        scraper = HouzzScraper()
+        
+        proxy_stats = {
+            'proxy_rotation_enabled': config.USE_PROXY_ROTATION,
+            'proxy_rotation_interval': config.PROXY_ROTATION_INTERVAL,
+            'proxy_username_configured': bool(config.PROXY_USERNAME),
+            'proxy_password_configured': bool(config.PROXY_PASSWORD),
+            'webshare_proxy_list_configured': bool(config.WEBSHARE_PROXY_LIST)
         }
+        
+        if config.USE_PROXY_ROTATION and scraper.proxy_list:
+            proxy_stats.update(scraper.get_proxy_stats())
+        else:
+            proxy_stats.update({
+                'message': 'Proxy rotation is disabled or no proxies configured',
+                'total_proxies': 0
+            })
+        
+        return proxy_stats
+        
     except Exception as e:
-        logger.error(f"Error listing all cities: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list all cities: {str(e)}")
+        logger.error(f"Error getting proxy status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get proxy status: {str(e)}")
 
 @app.get(
     "/stats", 
@@ -574,55 +484,6 @@ async def get_stats(platform: Optional[str] = None):
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
-
-@app.get(
-    "/proxy-status", 
-    response_model=Dict[str, Any],
-    tags=["System"],
-    summary="Get Proxy Status",
-    description="Get proxy rotation status and configuration information"
-)
-async def get_proxy_status():
-    """
-    ## Get Proxy Status
-    
-    Returns information about proxy rotation configuration and current status.
-    
-    **Returns:**
-    - Proxy rotation enabled/disabled status
-    - Proxy rotation interval settings
-    - Proxy authentication configuration status
-    - Current proxy statistics (if rotation is enabled)
-    - Total number of available proxies
-    """
-    try:
-        # Create a temporary scraper instance to get proxy stats
-        from src.houzz_scraper import HouzzScraper
-        
-        # Initialize scraper to get proxy information
-        scraper = HouzzScraper()
-        
-        proxy_stats = {
-            'proxy_rotation_enabled': config.USE_PROXY_ROTATION,
-            'proxy_rotation_interval': config.PROXY_ROTATION_INTERVAL,
-            'proxy_username_configured': bool(config.PROXY_USERNAME),
-            'proxy_password_configured': bool(config.PROXY_PASSWORD),
-            'webshare_proxy_list_configured': bool(config.WEBSHARE_PROXY_LIST)
-        }
-        
-        if config.USE_PROXY_ROTATION and scraper.proxy_list:
-            proxy_stats.update(scraper.get_proxy_stats())
-        else:
-            proxy_stats.update({
-                'message': 'Proxy rotation is disabled or no proxies configured',
-                'total_proxies': 0
-            })
-        
-        return proxy_stats
-        
-    except Exception as e:
-        logger.error(f"Error getting proxy status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get proxy status: {str(e)}")
 
 @app.post(
     "/scrape", 
