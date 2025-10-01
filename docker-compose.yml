@@ -14,6 +14,26 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=INFO
+      - MAX_PAGES_PER_STATE=2
+      - TIMEOUT=30
+      - HEADLESS=true
+      - ZEROBOUNCE_API_KEY=${ZEROBOUNCE_API_KEY}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX}
+      - PROXY_USERNAME=${PROXY_USERNAME}
+      - PROXY_PASSWORD=${PROXY_PASSWORD}
+      - WEBSHARE_API_KEY=${WEBSHARE_API_KEY}
+      - WEBSHARE_PROXY_LIST=${WEBSHARE_PROXY_LIST}
+      - USE_PROXY_ROTATION=${USE_PROXY_ROTATION}
+      - PROXY_ROTATION_INTERVAL=${PROXY_ROTATION_INTERVAL}
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '2.0'
+        reservations:
+          memory: 4G
+          cpus: '1.0'
     command: uvicorn main:app --host 0.0.0.0 --port 8000
     working_dir: /app
     restart: unless-stopped
