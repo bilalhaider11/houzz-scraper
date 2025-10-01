@@ -51,22 +51,21 @@ class LeadEnrichmentPipeline:
         Path(config.OUTPUT_DIR).mkdir(exist_ok=True)
         Path(config.LOG_DIR).mkdir(exist_ok=True)
         
-    async def run_full_pipeline(self, city: str = None, city_state: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz") -> str:
-        """Run the complete lead generation pipeline for a single city and profession"""
+    async def run_full_pipeline(self, location: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz") -> str:
+        """Run the complete lead generation pipeline for a single location and profession"""
         start_time = datetime.now()
-        logger.info(f"Starting full {platform} lead generation pipeline for {city} - {professional_type}")
+        logger.info(f"Starting full {platform} lead generation pipeline for location '{location}' - {professional_type}")
         
-        # Step 1: Scrape profiles for single city and profession
+        # Step 1: Scrape profiles for single location and profession
         if platform == "houzz":
-            logger.info("Phase 1: Scraping Houzz profiles for single city and profession")
+            logger.info(f"Phase 1: Scraping Houzz profiles for location '{location}' and profession '{professional_type}'")
             profiles = await self.scrape_houzz_profiles(
-                city=city,
-                city_state=city_state,
+                location=location,
                 professional_type=professional_type,
                 max_pages=max_pages,
                 start_page=start_page
             )
-            logger.info(f"Scraped {len(profiles)} Houzz profiles for {city} - {professional_type}")
+            logger.info(f"Scraped {len(profiles)} Houzz profiles for location '{location}' - {professional_type}")
         elif platform == "architizer":
             logger.info("Phase 1: Scraping Architizer profiles")
             profiles = await self.scrape_architizer_profiles(max_pages=max_pages, start_page=start_page)
@@ -749,39 +748,38 @@ class LeadEnrichmentPipeline:
                 except Exception as e:
                     logger.error(f"Error closing database connection: {e}")
 
-    async def scrape_houzz_profiles(self, city: str, city_state: str, professional_type: str, max_pages: int = 50, start_page: int = 1) -> List[ProfessionalProfile]:
-        """Scrape Houzz profiles for a single city and profession"""
+    async def scrape_houzz_profiles(self, location: str, professional_type: str, max_pages: int = 50, start_page: int = 1) -> List[ProfessionalProfile]:
+        """Scrape Houzz profiles for a single location and profession"""
         profiles = []
         db_manager = None
         
         try:
             # Initialize database manager
             db_manager = DatabaseManager()
-            logger.info("Database manager initialized for single city scraping")
+            logger.info(f"Database manager initialized for location '{location}' scraping")
             
             async with HouzzScraper(database_manager=db_manager) as scraper:
-                logger.info(f"Scraping configuration for single city/profession:")
-                logger.info(f"  City: {city}")
-                logger.info(f"  State: {city_state}")
+                logger.info(f"Scraping configuration:")
+                logger.info(f"  Location: {location}")
                 logger.info(f"  Professional type: {professional_type}")
                 logger.info(f"  Max pages: {max_pages}")
                 logger.info(f"  Starting page: {start_page}")
                 
-                # Scrape the single city and profession combination
-                logger.info(f"\n🔍 Starting scrape for {professional_type} in {city} ({city_state})")
+                # Scrape using the location-based method
+                logger.info(f"\n🔍 Starting scrape for {professional_type} at location '{location}'")
                 
-                state_profiles = await scraper.get_state_professionals_direct_filtered(
-                    state=city_state, 
+                # Use the new location-based scraping method
+                location_profiles = await scraper.get_professionals_by_location(
+                    location=location,
                     professional_type=professional_type, 
                     max_pages=max_pages,
-                    start_page=start_page,
-                    target_city=city
+                    start_page=start_page
                 )
                 
-                profiles.extend(state_profiles)
+                profiles.extend(location_profiles)
                 
                 # Profiles are already saved immediately by the scraper
-                logger.info(f"✅ Scraped {len(state_profiles)} profiles for {city} - {professional_type} (saved automatically)")
+                logger.info(f"✅ Scraped {len(location_profiles)} profiles for location '{location}' - {professional_type} (saved automatically)")
             
             logger.info(f"Total profiles scraped and stored: {len(profiles)}")
             return profiles

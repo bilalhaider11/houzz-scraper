@@ -59,15 +59,22 @@ class Config:
     # Professional types to scrape
     PROFESSIONAL_TYPES: List[str] = field(default_factory=lambda: [
         'interior-designer', 'architect', 'general-contractor', 'design-build',
-        'landscape-architect', 'kitchen-and-bath', 'home-builders'
+        'landscape-architect', 'kitchen-and-bath', 'home-builders',
+        'fireplace'
     ])
     
     # Professional type URL parameters (t_xxxxx values)
     PROFESSIONAL_TYPE_PARAMS: dict = field(default_factory=lambda: {
         'interior-designer': 't_11785', 'architect': 't_11784', 
-        'general-contractor': 't_11783', 'design-build': 't_11782',
-        'landscape-architect': 't_11786', 'kitchen-and-bath': 't_11790',
-        'home-builders': 't_11781'
+        'general-contractor': 't_11786', 'design-build': 't_11793',
+        'landscape-architect': 't_11788', 'kitchen-and-bath': 't_11790',
+        'home-builders': 't_11823', 'fireplace': 't_11800'
+    })
+    
+    # Location to Region ID mapping for URL construction
+    LOCATION_REGION_MAP: dict = field(default_factory=lambda: {
+        'usa': 'r_6252001',                    # United States (nationwide
+        # Add more locations as needed
     })
     
     # State to major cities with region IDs

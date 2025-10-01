@@ -51,16 +51,16 @@ class ScrapeRequest(BaseModel):
         description="Platform to scrape from",
         example="houzz"
     )
-    city: Optional[str] = Field(
-        None, 
-        description="City to scrape (use format like 'chicago-il-us' or 'new-york-ny-us'). Required for Houzz, optional for Architizer.",
-        example="chicago-il-us",
-        min_length=3,
+    location: str = Field(
+        ..., 
+        description="Location to scrape (e.g., 'usa'). Must be defined in LOCATION_REGION_MAP.",
+        example="usa",
+        min_length=2,
         max_length=50
     )
     professional_type: Optional[Literal[
         "interior-designer", "architect", "general-contractor", 
-        "design-build", "landscape-architect", "kitchen-and-bath", "home-builders"
+        "design-build", "landscape-architect", "kitchen-and-bath", "home-builders", "fireplace"
     ]] = Field(
         None, 
         description="Type of professional to scrape. Required for Houzz, optional for Architizer.",
@@ -68,7 +68,7 @@ class ScrapeRequest(BaseModel):
     )
     max_pages: Optional[int] = Field(
         50, 
-        description="Maximum number of pages to scrape for this city/profession combination",
+        description="Maximum number of pages to scrape for this location/profession combination",
         ge=1,
         le=100,
         example=50
@@ -85,7 +85,7 @@ class ScrapeRequest(BaseModel):
         schema_extra = {
             "example": {
                 "platform": "houzz",
-                "city": "chicago-il-us",
+                "location": "usa",
                 "professional_type": "interior-designer",
                 "max_pages": 50,
                 "start_page": 1
@@ -323,53 +323,6 @@ def validate_environment() -> bool:
     logger.info("✅ Environment validation passed")
     return True
 
-def validate_city_and_profession(city: str, professional_type: str) -> tuple:
-    """Validate single city and professional type"""
-    # Validate professional type
-    if professional_type not in config.PROFESSIONAL_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid professional type: {professional_type}. Available types: {config.PROFESSIONAL_TYPES}"
-        )
-    
-    # Find which state the city belongs to
-    city_state = None
-    for state, cities in config.STATE_CITY_REGIONS.items():
-        city_infos = [city_info for city_info, _ in cities]
-        if city in city_infos:
-            city_state = state
-            break
-    
-    if not city_state:
-        # Try to find by city name (without state suffix)
-        city_name = city.split('-')[0] if '-' in city else city
-        for state, cities in config.STATE_CITY_REGIONS.items():
-            for city_info, _ in cities:
-                if city_info.startswith(city_name.lower()):
-                    city_state = state
-                    city = city_info  # Use the full city_info format
-                    break
-            if city_state:
-                break
-    
-    if not city_state:
-        # Show available cities for better error message
-        all_cities = []
-        for state, cities in config.STATE_CITY_REGIONS.items():
-            all_cities.extend([city_info for city_info, _ in cities])
-        
-        available_preview = ', '.join(all_cities[:10])
-        if len(all_cities) > 10:
-            available_preview += '...'
-        
-        raise HTTPException(
-            status_code=400,
-            detail=f"City '{city}' not found. Available cities: {available_preview}"
-        )
-    
-    logger.info(f"✅ Validated city '{city}' in state '{city_state}' with profession '{professional_type}'")
-    return city, city_state
-
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
@@ -501,7 +454,8 @@ async def list_professional_types():
                 "design-build": "Design-Build",
                 "landscape-architect": "Landscape Architect",
                 "kitchen-and-bath": "Kitchen & Bath Designer",
-                "home-builders": "Home Builder"
+                "home-builders": "Home Builder",
+                "fireplace": "Fireplace"
             }
         }
     except Exception as e:
@@ -715,17 +669,33 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                 detail="Platform must be 'houzz' or 'architizer'"
             )
         
-        # Validate city and professional type based on platform
+        # Validate location and professional type based on platform
         if request.platform == "houzz":
-            if not request.city or not request.professional_type:
+            if not request.location or not request.professional_type:
                 raise HTTPException(
                     status_code=400,
-                    detail="City and professional_type are required for Houzz platform"
+                    detail="location and professional_type are required for Houzz platform"
                 )
-            validated_city, city_state = validate_city_and_profession(request.city, request.professional_type)
+            # Validate professional type
+            if request.professional_type not in config.PROFESSIONAL_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid professional type: {request.professional_type}. Available types: {config.PROFESSIONAL_TYPES}"
+                )
+            # Validate location exists in LOCATION_REGION_MAP
+            if request.location not in config.LOCATION_REGION_MAP:
+                available_locations = list(config.LOCATION_REGION_MAP.keys())
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid location: {request.location}. Available locations: {available_locations}"
+                )
         else:  # architizer
-            # Architizer doesn't require city/professional_type validation
-            validated_city, city_state = None, None
+            # Architizer doesn't require location/professional_type validation
+            if not request.location:
+                raise HTTPException(
+                    status_code=400,
+                    detail="location is required for Architizer platform"
+                )
         
         # Validate environment
         if not validate_environment():
@@ -746,14 +716,13 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
         
         # Run the complete pipeline
         if request.platform == "houzz":
-            logger.info(f"🚀 Starting {request.platform} pipeline for {validated_city} - {request.professional_type}")
+            logger.info(f"🚀 Starting {request.platform} pipeline for location '{request.location}' - {request.professional_type}")
         else:
             logger.info(f"🚀 Starting {request.platform} pipeline")
         
         # Execute the full pipeline
         response = await pipeline.run_full_pipeline(
-            city=validated_city,
-            city_state=city_state,
+            location=request.location,
             professional_type=request.professional_type,
             max_pages=request.max_pages,
             start_page=request.start_page,
@@ -764,7 +733,7 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
         
         if response:
             if request.platform == "houzz":
-                message = f"✅ {request.platform.capitalize()} pipeline completed successfully for {validated_city} - {request.professional_type}!"
+                message = f"✅ {request.platform.capitalize()} pipeline completed successfully for location '{request.location}' - {request.professional_type}!"
             else:
                 message = f"✅ {request.platform.capitalize()} pipeline completed successfully!"
             

@@ -31,7 +31,8 @@ PROFESSIONAL_TYPE_DISPLAY_NAMES = {
     'design-build': 'Design-Build',
     'landscape-architect': 'Landscape Architect',
     'kitchen-and-bath': 'Kitchen & Bath Designer',
-    'home-builders': 'Home Builder'
+    'home-builders': 'Home Builder',
+    'fireplace': 'Fireplace & Chimney'
 }
 
 class HouzzScraper(BaseScraper):
@@ -54,8 +55,8 @@ class HouzzScraper(BaseScraper):
         """Async context manager exit"""
         await self.cleanup()
 
-    async def get_state_professionals_direct(self, state: str, professional_type: str, max_pages: int = 50, start_page: int = 1, max_retries: int = 3) -> List[ProfessionalProfile]:
-        """Extract professional data directly from listing pages using city-based URLs"""
+    async def get_professionals_by_location(self, location: str, professional_type: str, max_pages: int = 50, start_page: int = 1, max_retries: int = 3) -> List[ProfessionalProfile]:
+        """Extract professional data directly from listing pages using specified location"""
         professionals = []
         page = None
 
@@ -66,112 +67,26 @@ class HouzzScraper(BaseScraper):
                 logger.error(f"No URL parameter found for profession type: {professional_type}")
                 return professionals
             
-            city_regions = config.STATE_CITY_REGIONS.get(state, [])
-            if not city_regions:
-                logger.error(f"No cities found for state: {state}")
+            # Validate location exists in mapping
+            if location not in config.LOCATION_REGION_MAP:
+                logger.error(f"Location '{location}' not found in LOCATION_REGION_MAP")
                 return professionals
             
             display_professional_type = PROFESSIONAL_TYPE_DISPLAY_NAMES.get(professional_type, professional_type.title())
             
-            # Process each city
-            for city_index, (city, region_id) in enumerate(city_regions):
-                page = await self.create_or_rotate_page(page)
-                logger.info(f"✅ Created or rotated new page for {city}")
+            # Create page
+            page = await self.create_or_rotate_page(page)
+            logger.info(f"✅ Created new page for scraping")
 
-                base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{professional_type}/{city}-probr0-bo~{prof_param}~{region_id}"
-                logger.info(f"Scraping {professional_type} in {city} ({state}): {base_url}")
-                
-                pages_scraped_this_city = 0
-                max_pages_to_scrape = max_pages if max_pages is not None else 100
-                
-                # Process pages for this city
-                for page_num in range(start_page, start_page + max_pages_to_scrape):
-                    fi_param = (page_num - 1) * 15
-                    url = f"{base_url}?fi={fi_param}"
-                    
-                    if self.state_manager.is_url_completed(url, platform="houzz"):
-                        logger.info(f"Skipping already completed URL: {url}")
-                        continue
-                    
-                    # Scrape this page with retry logic
-                    page_professionals = await self._scrape_page_with_retry(
-                        page, url, page_num, city, professional_type, state, max_retries
-                    )
-                    
-                    if not page_professionals:
-                        logger.info(f"No more professionals found on page {page_num} for {city}/{professional_type}")
-                        break
-                    
-                    # Add professional type info to each profile
-                    for prof in page_professionals:
-                        if not prof.professional_type or prof.professional_type.strip() == '':
-                            prof.professional_type = display_professional_type
-                    
-                    professionals.extend(page_professionals)
-                    logger.info(f"Extracted {len(page_professionals)} professionals from page {page_num}")
-                    
-                    # Show sample of extracted data
-                    if page_professionals:
-                        sample_names = [p.name for p in page_professionals[:3] if p.name]
-                        logger.info(f"Sample professionals: {sample_names}")
-                    
-                    # Mark URL as completed and update counters
-                    self.state_manager.mark_url_completed(url, platform="houzz")
-                    pages_scraped_this_city += 1
-                    
-                    # Adaptive delay between pages
-                    await self._adaptive_sleep(3.0)
-
-                # Log summary after completing this city
-                logger.info(f"📊 Completed scraping {city} ({state}) for {professional_type}: scraped {pages_scraped_this_city} pages successfully")
-                
-                # Delay between cities
-                await asyncio.sleep(random.uniform(2, 4))
-        finally:
-            if page:
-                await page.close()
-
-        return professionals
-    
-    async def get_state_professionals_direct_filtered(self, state: str, professional_type: str, target_city: str, max_pages: int = 50, start_page: int = 1, max_retries: int = 3) -> List[ProfessionalProfile]:
-        """Extract professional data for a specific city"""
-        professionals = []
-        page = None
-
-        try:
-            # Validate inputs and get configuration
-            prof_param = config.PROFESSIONAL_TYPE_PARAMS.get(professional_type)
-            if not prof_param:
-                logger.error(f"No URL parameter found for profession type: {professional_type}")
-                return professionals
+            # Get region_id from location mapping using dictionary access
+            region_id = config.LOCATION_REGION_MAP[location]
+            base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
+            logger.info(f"Scraping {professional_type} for location '{location}' (region: {region_id}): {base_url}")
             
-            city_regions = config.STATE_CITY_REGIONS.get(state, [])
-            if not city_regions:
-                logger.error(f"No cities found for state: {state}")
-                return professionals
-            
-            # Find the target city
-            target_city_info = self._find_target_city(city_regions, target_city)
-            if not target_city_info:
-                available_cities = [city_info for city_info, _ in city_regions[:5]]
-                logger.error(f"Target city '{target_city}' not found in state '{state}'. Available cities: {available_cities}")
-                return professionals
-            
-            city, region_id = target_city_info
-            display_professional_type = PROFESSIONAL_TYPE_DISPLAY_NAMES.get(professional_type, professional_type.title())
-            
-            page = await self.create_or_rotate_page()
-            logger.info(f"✅ Created or rotated new page for {city}")
-
-            base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{professional_type}/{city}-probr0-bo~{prof_param}~{region_id}"
-            
-            pages_scraped_this_city = 0
+            pages_scraped = 0
             max_pages_to_scrape = max_pages if max_pages is not None else 100
             
-            logger.info(f"🔍 Scraping {professional_type} in {city} ({state}): {base_url}")
-            logger.info(f"📋 Target: {max_pages_to_scrape} pages starting from page {start_page}")
-            
-            # Process pages for this city
+            # Process pages
             for page_num in range(start_page, start_page + max_pages_to_scrape):
                 fi_param = (page_num - 1) * 15
                 url = f"{base_url}?fi={fi_param}"
@@ -182,11 +97,11 @@ class HouzzScraper(BaseScraper):
                 
                 # Scrape this page with retry logic
                 page_professionals = await self._scrape_page_with_retry(
-                    page, url, page_num, city, professional_type, state, max_retries
+                    page, url, page_num, location, professional_type, max_retries
                 )
                 
                 if not page_professionals:
-                    logger.info(f"No more professionals found on page {page_num} for {city}/{professional_type}")
+                    logger.info(f"No more professionals found on page {page_num} for {professional_type}")
                     break
                 
                 # Add professional type info to each profile
@@ -204,13 +119,13 @@ class HouzzScraper(BaseScraper):
                 
                 # Mark URL as completed and update counters
                 self.state_manager.mark_url_completed(url, platform="houzz")
-                pages_scraped_this_city += 1
+                pages_scraped += 1
                 
                 # Adaptive delay between pages
                 await self._adaptive_sleep(3.0)
 
-            # Log summary after completing this city
-            logger.info(f"📊 Completed scraping {city} ({state}) for {professional_type}: scraped {pages_scraped_this_city} pages successfully")
+            # Log summary
+            logger.info(f"📊 Completed scraping location '{location}' for {professional_type}: scraped {pages_scraped} pages successfully")
             
         finally:
             if page:
@@ -218,26 +133,7 @@ class HouzzScraper(BaseScraper):
 
         return professionals
     
-    def _find_target_city(self, city_regions: List[tuple], target_city: str) -> Optional[tuple]:
-        """Find target city in the city regions list"""
-        for city_info, region_id in city_regions:
-            # Check for exact match or partial match
-            if (city_info == target_city or 
-                city_info.startswith(target_city.lower()) or 
-                target_city.lower() in city_info.lower()):
-                logger.info(f"✅ Found target city: {city_info} with region_id: {region_id}")
-                return (city_info, region_id)
-        
-        # Try to find by city name only (without state suffix)
-        city_name = target_city.split('-')[0] if '-' in target_city else target_city
-        for city_info, region_id in city_regions:
-            if city_info.startswith(city_name.lower()):
-                logger.info(f"✅ Found target city by name match: {city_info} with region_id: {region_id}")
-                return (city_info, region_id)
-        
-        return None
-
-    async def _scrape_page_with_retry(self, page: Page, url: str, page_num: int, city: str, professional_type: str, state: str, max_retries: int) -> List[ProfessionalProfile]:
+    async def _scrape_page_with_retry(self, page: Page, url: str, page_num: int, location: str, professional_type: str, max_retries: int) -> List[ProfessionalProfile]:
         """Scrape a single page with retry logic"""
         last_exception = None
 
@@ -259,15 +155,15 @@ class HouzzScraper(BaseScraper):
                 page_professionals = await self.extract_professionals_from_listing_page(page, professional_type)
                 
                 if not page_professionals:
-                    logger.info(f"No more professionals found on page {page_num} for {city}/{professional_type}")
+                    logger.info(f"No more professionals found on page {page_num} for {location}/{professional_type}")
                     return []
                 
-                logger.info(f"✅ Successfully scraped page {page_num} for {city}/{professional_type} ({state}) - Found {len(page_professionals)} professionals")
+                logger.info(f"✅ Successfully scraped page {page_num} for {location}/{professional_type} - Found {len(page_professionals)} professionals")
                 return page_professionals
                 
             except Exception as e:
                 last_exception = e
-                logger.warning(f"Error scraping page {page_num} for {city}/{professional_type} on attempt {attempt + 1}: {e}")
+                logger.warning(f"Error scraping page {page_num} for {location}/{professional_type} on attempt {attempt + 1}: {e}")
                 
                 if attempt < max_retries - 1:
                     retry_delay = (2 ** attempt) + random.uniform(2, 4)
@@ -545,7 +441,7 @@ class HouzzScraper(BaseScraper):
             # Extract from Business Details section
             business_section = soup.find("section", id="business")
             if business_section:
-                self._extract_business_details(business_section, profile)
+                await self._extract_business_details(business_section, profile)
             else:
                 # Fallback to previous logic if section not found
                 self._extract_fallback_details(soup, profile)
@@ -569,7 +465,7 @@ class HouzzScraper(BaseScraper):
             logger.error(f"Error extracting profile data: {e}")
             return None
     
-    def _extract_business_details(self, business_section, profile: ProfessionalProfile):
+    async def _extract_business_details(self, business_section, profile: ProfessionalProfile):
         """Extract details from business section"""
         for cell in business_section.select('[class*="BusinessDetails__StyledCell"]'):
             label = cell.select_one("h3")
@@ -600,7 +496,7 @@ class HouzzScraper(BaseScraper):
                 if num:
                     profile.followers_count = int(num.group())
             elif "social" in key:
-                self._extract_social_links(cell, profile)
+                await self._extract_social_links(cell, profile)
     
     def _extract_website(self, value, profile: ProfessionalProfile):
         """Extract website URL"""
