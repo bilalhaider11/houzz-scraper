@@ -80,6 +80,12 @@ class ScrapeRequest(BaseModel):
         le=1000,
         example=1
     )
+    row_number: int = Field(
+        ..., 
+        description="Google Sheets row number to update with results (1-based)",
+        ge=1,
+        example=5
+    )
     
     class Config:
         schema_extra = {
@@ -88,7 +94,8 @@ class ScrapeRequest(BaseModel):
                 "location": "usa",
                 "professional_type": "interior-designer",
                 "max_pages": 50,
-                "start_page": 1
+                "start_page": 1,
+                "row_number": 5
             }
         }
 
@@ -616,7 +623,8 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
             professional_type=request.professional_type,
             max_pages=request.max_pages,
             start_page=request.start_page,
-            platform=request.platform
+            platform=request.platform,
+            row_number=request.row_number
         )
         
         execution_time = round((time.time() - start_time) / 60, 2)

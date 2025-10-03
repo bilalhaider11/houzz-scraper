@@ -106,9 +106,36 @@ class ZeroBounceVerifier:
                         sub_status=f"api_error_{response.status}"
                     )
                 
-                data = await response.json()
+                try:
+                    data = await response.json()
+                except Exception as json_error:
+                    logger.error(f"Failed to parse ZeroBounce JSON response for {email}: {json_error}")
+                    response_text = await response.text()
+                    logger.error(f"Raw response: {response_text[:500]}...")
+                    return ZeroBounceResult(
+                        email=email,
+                        status=ZeroBounceStatus.UNKNOWN,
+                        sub_status=f"json_parse_error: {str(json_error)}"
+                    )
+                
+                # Check if data is None or invalid
+                if data is None:
+                    logger.error(f"ZeroBounce API returned None data for email: {email}")
+                    return ZeroBounceResult(
+                        email=email,
+                        status=ZeroBounceStatus.UNKNOWN,
+                        sub_status="api_returned_none_data"
+                    )
                 
                 # Check for API error responses
+                if not isinstance(data, dict):
+                    logger.error(f"ZeroBounce API returned non-dict data: {type(data)} for email: {email}")
+                    return ZeroBounceResult(
+                        email=email,
+                        status=ZeroBounceStatus.UNKNOWN,
+                        sub_status=f"api_returned_non_dict: {type(data)}"
+                    )
+                
                 if 'error' in data:
                     logger.error(f"ZeroBounce API returned error: {data['error']}")
                     return ZeroBounceResult(

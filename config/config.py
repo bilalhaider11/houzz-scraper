@@ -141,6 +141,23 @@ class Config:
     MAX_PAGES_PER_STATE: int = int(os.getenv('MAX_PAGES_PER_STATE', '50').strip('"'))  # Limit pages per state
     
     # ============================================================================
+    # GOOGLE SHEETS INTEGRATION
+    # ============================================================================
+    
+    # Google Sheets API Configuration
+    GOOGLE_SHEETS_SPREADSHEET_ID: Optional[str] = os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID')
+    GOOGLE_SHEETS_WORKSHEET_NAME: str = os.getenv('GOOGLE_SHEETS_WORKSHEET_NAME', 'Sheet1')
+    
+    # Second Google Sheet for Profile Data
+    GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID: Optional[str] = os.getenv('GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID')
+    GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME: str = os.getenv('GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME', 'Sheet1')
+    
+    # Google Service Account Credentials (stored in .env) - Only essential fields
+    GOOGLE_SHEETS_CLIENT_EMAIL: Optional[str] = os.getenv('GOOGLE_SHEETS_CLIENT_EMAIL')
+    GOOGLE_SHEETS_PRIVATE_KEY: Optional[str] = os.getenv('GOOGLE_SHEETS_PRIVATE_KEY')
+    GOOGLE_SHEETS_PROJECT_ID: Optional[str] = os.getenv('GOOGLE_SHEETS_PROJECT_ID')
+    
+    # ============================================================================
     # OUTPUT SETTINGS
     # ============================================================================
     

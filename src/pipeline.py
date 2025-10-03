@@ -18,6 +18,7 @@ from .google_searcher import GoogleSearcher
 from .database_manager import DatabaseManager
 from .zerobounce_verifier import ZeroBounceVerifier
 from .architizer_scraper import ArchitizerScraper
+from .google_sheets_service import GoogleSheetsService
 from config.config import config
 
 
@@ -27,6 +28,7 @@ class LeadEnrichmentPipeline:
     def __init__(self):
         self.setup_logging()
         self.setup_directories()
+        self.google_sheets_service = GoogleSheetsService()
         
     def setup_logging(self):
         """Setup logging configuration"""
@@ -49,7 +51,7 @@ class LeadEnrichmentPipeline:
         Path(config.OUTPUT_DIR).mkdir(exist_ok=True)
         Path(config.LOG_DIR).mkdir(exist_ok=True)
         
-    async def run_full_pipeline(self, location: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz") -> str:
+    async def run_full_pipeline(self, location: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz", row_number: int = None) -> str:
         """Run the complete lead generation pipeline for a single location and profession"""
         start_time = datetime.now()
         logger.info(f"Starting full {platform} lead generation pipeline for location '{location}' - {professional_type}")
@@ -94,6 +96,12 @@ class LeadEnrichmentPipeline:
         try:
             stats = await self.validate_and_process_emails(platform=platform)
             logger.info(f"✅ Email validation and processing complete")
+            
+            # Step 5: Update Google Sheets with results (if enabled and successful)
+            if stats and not stats.get('error'):
+                await self._update_google_sheets(stats, row_number=row_number)
+                await self._update_profiles_sheet(stats)
+            
             return stats
             
         except Exception as e:
@@ -111,12 +119,12 @@ class LeadEnrichmentPipeline:
     async def _validate_email_with_zerobounce(self, email: str) -> bool:
         """Validate email using ZeroBounce API"""
         try:
-            from .zerobounce_verifier import ZeroBounceVerifier
+            from .zerobounce_verifier import ZeroBounceVerifier, ZeroBounceStatus
             verifier = ZeroBounceVerifier()
-            result = await verifier.verify_email(email)
+            result = await verifier.verify_single_email(email)
             
-            # Consider email valid if it's deliverable or catch-all
-            return result.get('status') in ['valid', 'catch-all']
+            # Consider email valid ONLY if it's explicitly valid (not catch-all)
+            return result.status == ZeroBounceStatus.VALID
             
         except Exception as e:
             logger.error(f"ZeroBounce validation error for {email}: {e}")
@@ -262,7 +270,7 @@ class LeadEnrichmentPipeline:
                             validated_profiles.append(profile)
                             
                             # Update database with validated emails and mark as completed
-                            await db_manager.update_profile_field(profile.id, 'emails', json.dumps(validated_emails_json))
+                            db_manager.update_profile_field(profile.id, 'emails', json.dumps(validated_emails_json))
                             db_manager.mark_profile_completed(profile.id)
                             db_manager.mark_email_verified(profile.id)
                             
@@ -803,4 +811,73 @@ class LeadEnrichmentPipeline:
                     logger.info("Database connection closed")
                 except Exception as e:
                     logger.error(f"Error closing database connection: {e}")
- 
+
+    async def _update_google_sheets(self, stats: Dict[str, Any], row_number: int = None) -> None:
+        """
+        Update Google Sheets with pipeline completion results
+        
+        Args:
+            stats: Pipeline statistics dictionary
+            row_number: Row number to update (1-based). If None, will skip update.
+        """
+        try:
+            if not self.google_sheets_service.is_available():
+                logger.info("Google Sheets integration not available - skipping update")
+                return
+            
+            # Skip update if no row number provided
+            if row_number is None:
+                logger.info("No row number provided - skipping Google Sheets update")
+                return
+
+            if stats.get('profiles_marked_completed') is None:
+                logger.info("Profiles marked completed is None - skipping Google Sheets update")
+                return
+            
+            logger.info(f"📊 Updating Google Sheets row {row_number} with pipeline results...")
+            
+            # Test connection first
+            if not self.google_sheets_service.test_connection():
+                logger.warning("Google Sheets connection test failed - skipping update")
+                return
+            
+            # Update with results
+            success = self.google_sheets_service.update_pipeline_results(
+                total_time_minutes=stats.get('total_time_minutes', 0),
+                row_number=row_number
+            )
+            
+            if success:
+                logger.info(f"✅ Google Sheets row {row_number} updated successfully with pipeline results")
+            else:
+                logger.warning(f"⚠️ Failed to update Google Sheets row {row_number}")
+                
+        except Exception as e:
+            logger.error(f"Error updating Google Sheets: {e}")
+            # Don't raise the exception - Google Sheets update failure shouldn't break the pipeline
+
+    async def _update_profiles_sheet(self, stats: Dict[str, Any]) -> None:
+        """
+        Update Google Sheets profiles sheet with profile names and emails
+        
+        Args:
+            stats: Pipeline statistics dictionary containing profiles
+        """
+        try:
+            if not self.google_sheets_service.is_available():
+                logger.info("Google Sheets service not available - skipping profiles sheet update")
+                return
+            
+            logger.info("📊 Updating profiles sheet with profile data...")
+            
+            # Update profiles sheet
+            success = self.google_sheets_service.update_profiles_sheet(stats)
+            
+            if success:
+                logger.info("✅ Profiles sheet updated successfully")
+            else:
+                logger.warning("⚠️ Failed to update profiles sheet")
+                
+        except Exception as e:
+            logger.error(f"Error updating profiles sheet: {e}")
+            # Don't raise the exception - Profiles sheet update failure shouldn't break the pipeline

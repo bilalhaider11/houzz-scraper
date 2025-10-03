@@ -67,7 +67,7 @@ class EmailServiceConfig:
         'tempmail.org', 'yopmail.com', 'temp-mail.org', 'sharklasers.com',
         'throwaway.email', 'getnada.com', 'trashmail.com', 'maildrop.cc',
         'guerrillamailblock.com', 'spam4.me', 'tempinbox.com', 'sentry.wixpress.com',
-        'domain.com'
+        'domain.com', 'example.com'
     })
 
 
