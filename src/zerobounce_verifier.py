@@ -107,10 +107,22 @@ class ZeroBounceVerifier:
                     )
                 
                 try:
-                    data = await response.json()
+                    response_text = await response.text()
+                    logger.debug(f"ZeroBounce raw response for {email}: {response_text[:200]}...")
+                    p
+                    if not response_text.strip():
+                        logger.error(f"ZeroBounce API returned empty response for email: {email}")
+                        return ZeroBounceResult(
+                            email=email,
+                            status=ZeroBounceStatus.UNKNOWN,
+                            sub_status="api_returned_empty_response"
+                        )
+                    
+                    # Parse JSON from the response text
+                    import json
+                    data = json.loads(response_text)
                 except Exception as json_error:
                     logger.error(f"Failed to parse ZeroBounce JSON response for {email}: {json_error}")
-                    response_text = await response.text()
                     logger.error(f"Raw response: {response_text[:500]}...")
                     return ZeroBounceResult(
                         email=email,
@@ -144,6 +156,15 @@ class ZeroBounceVerifier:
                         sub_status=f"api_error: {data['error']}"
                     )
                 
+                # Additional safety check for None data
+                if data is None:
+                    logger.error(f"ZeroBounce data became None after parsing for email: {email}")
+                    return ZeroBounceResult(
+                        email=email,
+                        status=ZeroBounceStatus.UNKNOWN,
+                        sub_status="data_became_none_after_parsing"
+                    )
+                
                 # Parse ZeroBounce response
                 status_str = data.get('status', 'unknown')
                 sub_status = data.get('sub_status', '')
@@ -174,6 +195,15 @@ class ZeroBounceVerifier:
                     confidence_score = 0.1
                 else:
                     confidence_score = 0.0
+                
+                # Final safety check before creating result
+                if data is None:
+                    logger.error(f"ZeroBounce data is None when creating result for email: {email}")
+                    return ZeroBounceResult(
+                        email=email,
+                        status=ZeroBounceStatus.UNKNOWN,
+                        sub_status="data_none_when_creating_result"
+                    )
                 
                 return ZeroBounceResult(
                     email=email,
@@ -301,6 +331,9 @@ class ZeroBounceVerifier:
             async with self.session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
+                    if data is None:
+                        logger.error("ZeroBounce API returned None data for credits request")
+                        return None
                     credits = data.get('Credits', 0)
                     logger.info(f"ZeroBounce credits remaining: {credits}")
                     return credits

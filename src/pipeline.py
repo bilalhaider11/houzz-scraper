@@ -94,7 +94,7 @@ class LeadEnrichmentPipeline:
         # Step 4: Email validation and processing (with smart email selection)
         logger.info("Phase 4: Email validation and processing with smart email selection")
         try:
-            stats = await self.validate_and_process_emails(platform=platform)
+            stats = await self.validate_and_process_emails(platform=platform, start_time=start_time)
             logger.info(f"✅ Email validation and processing complete")
             
             # Step 5: Update Google Sheets with results (if enabled and successful)
@@ -123,13 +123,29 @@ class LeadEnrichmentPipeline:
             verifier = ZeroBounceVerifier()
             result = await verifier.verify_single_email(email)
             
-            # Consider email valid ONLY if it's explicitly valid (not catch-all)
-            return result.status == ZeroBounceStatus.VALID
+            # Handle different ZeroBounce statuses
+            if result.status == ZeroBounceStatus.VALID:
+                return True
+            elif result.status == ZeroBounceStatus.INVALID:
+                return False
+            elif result.status == ZeroBounceStatus.UNKNOWN:
+                # If ZeroBounce returns unknown (API error, etc.), do basic validation
+                logger.warning(f"ZeroBounce returned unknown status for {email}: {result.sub_status}")
+                # Do basic email format validation as fallback
+                import re
+                email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+                return bool(re.match(email_pattern, email))
+            else:
+                # For other statuses (catch-all, disposable, etc.), consider invalid
+                logger.info(f"Email {email} marked as invalid due to status: {result.status}")
+                return False
             
         except Exception as e:
             logger.error(f"ZeroBounce validation error for {email}: {e}")
-            # If validation fails, assume email is valid to avoid false negatives
-            return True
+            # If validation fails completely, do basic email format validation
+            import re
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            return bool(re.match(email_pattern, email))
 
     def _select_best_emails(self, emails_json: dict) -> Optional[List[str]]:
         """
@@ -164,7 +180,7 @@ class LeadEnrichmentPipeline:
             logger.error(f"Error selecting best emails: {e}")
             return None
 
-    async def validate_and_process_emails(self, platform: str = "houzz") -> Dict[str, Any]:
+    async def validate_and_process_emails(self, platform: str = "houzz", start_time: datetime = None) -> Dict[str, Any]:
         """
         Step 4: Email validation and processing phase.
         - Validates emails via ZeroBounce
@@ -179,7 +195,6 @@ class LeadEnrichmentPipeline:
             Dictionary with processing statistics
         """
         logger.info("Phase 4: Email validation and processing")
-        start_time = datetime.now()
         db_manager = None
         
         try:
@@ -224,7 +239,6 @@ class LeadEnrichmentPipeline:
             validated_profiles = []
             profiles_removed = 0
             invalid_emails_removed_count = 0
-            
             for profile in all_profiles:
                 if profile.emails:
                     try:
@@ -288,11 +302,11 @@ class LeadEnrichmentPipeline:
                     await db_manager.remove_profile(profile.id)
                     profiles_removed += 1
                     logger.info(f"🗑️ Removed {profile.name} - no emails to validate")
-            
+
             # Calculate statistics
             end_time = datetime.now()
             total_time = (end_time - start_time).total_seconds()
-            
+
             # Create simplified profile list with only name, emails, and profile_url
             simplified_profiles = []
             for profile in validated_profiles:
@@ -301,7 +315,7 @@ class LeadEnrichmentPipeline:
                     "emails": profile.emails,
                     "profile_url": profile.profile_url
                 })
-            
+
             stats = {
                 "total_profiles_processed": len(all_profiles),
                 "profiles_marked_completed": len(validated_profiles),
