@@ -341,6 +341,23 @@ class LoggingUtils:
     def log_profile_extracted(name: str):
         """Log profile extraction"""
         logger.debug(f"✅ Extracted: {name}")
+    
+    @staticmethod
+    def log_network_error(message: str, url: str = None):
+        """Log network-related errors"""
+        if url:
+            logger.warning(f"🌐 {message} - URL: {url}")
+        else:
+            logger.warning(f"🌐 {message}")
+    
+    @staticmethod
+    def log_error_with_context(message: str, context: Dict[str, Any] = None):
+        """Log errors with additional context"""
+        if context:
+            context_str = ", ".join([f"{k}: {v}" for k, v in context.items()])
+            logger.error(f"❌ {message} - Context: {context_str}")
+        else:
+            logger.error(f"❌ {message}")
 
 # Global instances for easy access
 constants = ScrapingConstants()

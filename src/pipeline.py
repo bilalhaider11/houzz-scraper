@@ -830,8 +830,9 @@ class LeadEnrichmentPipeline:
                 logger.info("No row number provided - skipping Google Sheets update")
                 return
 
-            if stats.get('profiles_marked_completed') is None:
-                logger.info("Profiles marked completed is None - skipping Google Sheets update")
+            profiles_processed = stats.get('total_profiles_processed', 0)
+            if profiles_processed <= 0:
+                logger.info("No profiles processed - skipping Google Sheets update")
                 return
             
             logger.info(f"📊 Updating Google Sheets row {row_number} with pipeline results...")
