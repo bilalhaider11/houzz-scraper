@@ -15,13 +15,14 @@ A production-ready FastAPI application for scraping and enriching leads from **H
 - **Phase 1**: Platform Profile Scraping (Houzz/Architizer)
 - **Phase 2**: Advanced Website Email Mining (Playwright)
 - **Phase 3**: Google Custom Search Enrichment
-- **Phase 4**: ZeroBounce Verification & CSV Export
+- **Phase 4**: Email Validation & Processing with Google Sheets Integration
 
 ### 🔧 Advanced Features
 - **✅ ZeroBounce Integration**: Production-grade email verification with smart credit management
 - **🌐 Playwright Automation**: JavaScript-heavy website scraping with browser automation
 - **🔍 Optimized Google Custom Search**: Advanced query strategies with 400-500% better coverage, finds Gmail addresses and social media profiles across 7+ platforms
-- **📊 Intelligent Email Prioritization**: Personal > Business > Generic email selection
+- **📊 Intelligent Email Selection**: Smart selection (max 2, min 1) prioritizing personal > business emails
+- **📈 Google Sheets Integration**: Automated results tracking and profile management for email campaigns
 - **💾 SQLite Database**: Persistent storage with progress tracking and resume capability
 - **🛡️ Anti-Detection**: CAPTCHA handling, proxy support, rate limiting, user-agent rotation
 - **⚡ High Performance**: Concurrent processing, efficient database operations, memory optimization
@@ -357,25 +358,34 @@ curl -X POST http://localhost:8000/scrape \
 
 ---
 
-### Phase 4: ✅ Email Verification & CSV Export
+### Phase 4: ✅ Email Validation & Processing with Google Sheets Integration
 **What it does:**
-**Email Verification (ZeroBounce):**
+**Email Validation (ZeroBounce):**
 - Verifies email deliverability using ZeroBounce API
-- Prioritizes personal emails over business emails for verification
-- Uses smart caching to avoid duplicate API calls (saves credits)
+- Validates all personal and business emails found in previous phases
 - Removes invalid/undeliverable emails to improve data quality
-- Falls back to business email verification if no personal emails validate
+- Uses smart caching to avoid duplicate API calls (saves credits)
 
-**Intelligent CSV Export:**
-- Exports all enriched and verified profile data to timestamped CSV files
-- Applies intelligent email prioritization (personal > business > generic)
-- Includes all collected data: verified emails, phones, social media profiles, websites
-- Creates production-ready lead files for immediate outreach use
-- Platform-specific column ordering and data formatting
+**Smart Email Selection:**
+- Selects the best emails for each profile (max 2, min 1 required)
+- Prioritizes personal emails (Gmail, Yahoo, etc.) over business emails
+- Removes profiles with no valid emails (data quality control)
+- Marks validated profiles as completed in the database
 
-**Note:** This phase runs automatically as part of the complete pipeline. Use `no_email_verification: true` to skip email verification.
+**Google Sheets Integration:**
+- Updates pipeline tracking sheet with execution results
+- Updates row-specific data: completion status, execution time, timestamp
+- Appends validated profiles to profiles sheet for email campaign management
+- Includes columns: email, name, status tracking fields
 
-**Output:** Production-ready CSV file with verified leads and comprehensive contact data.
+**Profile Data Management:**
+- Marks profiles as completed after successful validation
+- Removes profiles with zero valid emails
+- Tracks detailed statistics (profiles processed, removed, invalid emails)
+
+**Note:** This phase runs automatically as part of the complete pipeline.
+
+**Output:** Database profiles marked as completed, Google Sheets updated with results and validated contact data.
 
 ---
 
@@ -405,7 +415,7 @@ curl -X POST http://localhost:8000/scrape \
 
 **Phase Execution Order:**
 ```
-1. Platform Scraping → 2. Website Email Mining → 3. Google Search Enrichment → 4. Verification & Export
+1. Platform Scraping → 2. Website Email Mining → 3. Google Search Enrichment → 4. Validation & Processing
 ```
 
 **Key Benefits:**
@@ -740,6 +750,15 @@ ZEROBOUNCE_API_KEY=your_zerobounce_api_key_here
 GOOGLE_SEARCH_API_KEY=your_google_api_key_here
 GOOGLE_SEARCH_CX=your_google_custom_search_engine_id_here
 
+# Optional Google Sheets Integration (for automated results tracking)
+GOOGLE_SHEETS_SPREADSHEET_ID=your_tracking_spreadsheet_id
+GOOGLE_SHEETS_WORKSHEET_NAME=Sheet1
+GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID=your_profiles_spreadsheet_id
+GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME=Sheet1
+GOOGLE_SHEETS_CLIENT_EMAIL=your_service_account@project.iam.gserviceaccount.com
+GOOGLE_SHEETS_PRIVATE_KEY=your_private_key_here
+GOOGLE_SHEETS_PROJECT_ID=your_project_id
+
 # Optional Proxy Settings
 PROXY_USERNAME=your_proxy_username
 PROXY_PASSWORD=your_proxy_password
@@ -758,7 +777,17 @@ LOG_DIR=logs
 
 ### Configuration Features
 
-The system supports comprehensive configuration through `config/config.py`:
+The system supports comprehensive configuration through `config/config.py` and environment variables:
+
+#### Google Sheets Integration (Optional)
+Set these environment variables to enable Google Sheets integration:
+- `GOOGLE_SHEETS_SPREADSHEET_ID`: Main tracking spreadsheet ID
+- `GOOGLE_SHEETS_WORKSHEET_NAME`: Worksheet name (default: "Sheet1")
+- `GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID`: Profiles spreadsheet ID for email campaigns
+- `GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME`: Profiles worksheet name (default: "Sheet1")
+- `GOOGLE_SHEETS_CLIENT_EMAIL`: Service account email
+- `GOOGLE_SHEETS_PRIVATE_KEY`: Service account private key
+- `GOOGLE_SHEETS_PROJECT_ID`: Google Cloud project ID
 
 #### Location Support
 - **USA Nationwide**: `location: "usa"` for all US states
