@@ -2,11 +2,11 @@
 steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/houzz-scraper:$COMMIT_SHA', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/houzz-scraper:$BUILD_ID', '.']
   
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/houzz-scraper:$COMMIT_SHA']
+    args: ['push', 'gcr.io/$PROJECT_ID/houzz-scraper:$BUILD_ID']
   
   # Deploy container image to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -16,7 +16,7 @@ steps:
       - 'deploy'
       - 'houzz-scraper'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/houzz-scraper:$COMMIT_SHA'
+      - 'gcr.io/$PROJECT_ID/houzz-scraper:$BUILD_ID'
       - '--region'
       - 'us-central1'
       - '--platform'
@@ -37,9 +37,8 @@ steps:
 
 # Store images in Google Container Registry
 images:
-  - 'gcr.io/$PROJECT_ID/houzz-scraper:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/houzz-scraper:$BUILD_ID'
 
-# Build options optimized for hourly scraping
+# Build options optimized for low-frequency scraping (1-2 requests/hour)
 options:
-  machineType: 'E2_HIGHCPU_2'
   diskSizeGb: 20

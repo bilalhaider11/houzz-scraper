@@ -28,6 +28,23 @@ A production-ready FastAPI application for scraping and enriching leads from **H
 - **⚡ High Performance**: Concurrent processing, efficient database operations, memory optimization
 - **🎛️ Flexible Execution**: Run individual phases or complete pipeline with granular control
 
+## ☁️ Cloud Deployment
+
+> **🚀 READY TO DEPLOY TO GOOGLE CLOUD RUN?**
+> 
+> **Read the deployment guide:** [DEPLOY.md](DEPLOY.md)
+>
+> **Three commands to deploy:**
+> ```bash
+> gcloud auth login        # 1. Login to Google Cloud
+> ./cloud-deploy.sh        # 2. Choose option 1 (Fresh deployment)
+> ./setup-env-vars.sh      # 3. Choose option 1 (Load from .env)
+> ```
+>
+> **Time:** 10 minutes | **Cost:** $30-50/month (or $5-15 with scale-to-zero)
+
+---
+
 ## 📋 Prerequisites
 
 ### System Requirements
@@ -715,28 +732,19 @@ docker run -p 8000:8000 --env-file .env houzz-scraper
 
 ### Google Cloud Run Deployment
 
+**Simple deployment with automated script:**
+
 ```bash
-# Set your project ID
-export PROJECT_ID=your-project-id
+./cloud-deploy.sh  # Choose option 1 (Fresh deployment)
+```
 
-# Build and push to Google Container Registry
-docker build -t gcr.io/$PROJECT_ID/houzz-scraper .
-docker push gcr.io/$PROJECT_ID/houzz-scraper
+**Or use Cloud Build directly:**
 
-# Deploy to Cloud Run
-gcloud run deploy houzz-scraper \
-  --image gcr.io/$PROJECT_ID/houzz-scraper \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --memory 2Gi \
-  --cpu 2 \
-  --timeout 3600 \
-  --set-env-vars "HEADLESS=true,TIMEOUT=60,MAX_PAGES_PER_STATE=50"
-
-# Or use Cloud Build for automated deployment
+```bash
 gcloud builds submit --config cloudbuild.yaml
 ```
+
+**For complete step-by-step instructions, see [DEPLOY.md](DEPLOY.md)**
 
 ## 🔧 Configuration
 
