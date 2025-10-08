@@ -265,8 +265,10 @@ class GoogleSheetsService:
             }
             
             # Append the profile records to the profiles sheet (starting from column A)
-            range_name = f"{profiles_worksheet_name}!A2:H"
-            
+            # Use A:A to ensure data starts from column A
+            range_name = f"{profiles_worksheet_name}!A:A"
+            logger.info(f"📊 Updating profiles sheet with range: {range_name}")
+
             result = self.service.spreadsheets().values().append(
                 spreadsheetId=profiles_spreadsheet_id,
                 range=range_name,

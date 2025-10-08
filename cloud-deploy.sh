@@ -461,20 +461,57 @@ with open('.env.yaml', 'w') as f:
         
     8)
         echo ""
-        echo -e "${BLUE}🧹 Clearing local database and state files only...${NC}"
+        echo -e "${BLUE}🧹 Clearing local and production database and state files...${NC}"
         echo -e "${RED}⚠️  WARNING: This will permanently delete:${NC}"
+        echo ""
+        echo "LOCAL:"
         echo "   • SQLite database (data/scraper.db)"
         echo "   • State manager file (scraping_state.json)"
         echo "   • All log files (logs/*.log)"
         echo ""
+        echo "PRODUCTION (Cloud Run):"
+        echo "   • Restart service to clear ephemeral storage (/tmp)"
+        echo "   • Clear any in-memory state"
+        echo ""
         read -p "Are you sure you want to continue? (yes/no): " CONFIRM
         
         if [ "$CONFIRM" = "yes" ]; then
+            # Clear local data
             clear_local_data
-            echo -e "${GREEN}✅ Local data cleared successfully!${NC}"
+            
+            # Check if service exists
+            if gcloud run services describe $SERVICE_NAME --region=$REGION &>/dev/null; then
+                echo ""
+                echo -e "${BLUE}🔄 Clearing production data by restarting Cloud Run service...${NC}"
+                
+                # Force a new revision by updating with a timestamp label
+                # This causes Cloud Run to restart all instances, clearing ephemeral storage
+                TIMESTAMP=$(date +%s)
+                if gcloud run services update $SERVICE_NAME \
+                    --region=$REGION \
+                    --update-labels="last-cleared=$TIMESTAMP" \
+                    --quiet 2>/dev/null; then
+                    
+                    echo -e "${GREEN}✅ Cloud Run service restarted - ephemeral storage cleared${NC}"
+                    
+                    # Get service URL
+                    SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format="value(status.url)" 2>/dev/null || echo "")
+                    if [ -n "$SERVICE_URL" ]; then
+                        echo ""
+                        echo -e "${GREEN}Service URL: $SERVICE_URL${NC}"
+                        echo "The service has been restarted with fresh storage."
+                    fi
+                else
+                    echo -e "${YELLOW}⚠️  Could not restart Cloud Run service${NC}"
+                    echo "You may need to redeploy manually to clear production data."
+                fi
+            else
+                echo ""
+                echo -e "${YELLOW}⚠️  Cloud Run service not found - no production data to clear${NC}"
+            fi
+            
             echo ""
-            echo "Note: This only cleared local files. Cloud Run services are stateless."
-            echo "The deployed service will start fresh on next deployment."
+            echo -e "${GREEN}✅ Local and production data cleared successfully!${NC}"
         else
             echo "Cancelled"
         fi
