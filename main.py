@@ -657,13 +657,35 @@ async def test_sheets_connection():
                     "note": f"Connected but couldn't fetch full metadata: {str(e)}"
                 }
         else:
+            # Provide more detailed troubleshooting information
+            spreadsheet_id_length = len(sheets_service.spreadsheet_id) if sheets_service.spreadsheet_id else 0
+            
+            suggestions = [
+                "1. Verify the spreadsheet ID is correct (should be ~44 characters from the URL)",
+                "2. Share the Google Sheet with the service account email",
+                f"3. Service account email: {config.GOOGLE_SHEETS_CLIENT_EMAIL}",
+                "4. Make sure you're using a Google Sheets ID, not a Drive file ID"
+            ]
+            
+            # Check if spreadsheet ID looks suspicious
+            if spreadsheet_id_length < 40:
+                suggestions.insert(0, f"⚠️  WARNING: Spreadsheet ID length ({spreadsheet_id_length}) is unusually short. Normal IDs are ~44 characters.")
+            
             return {
                 "status": "connection_failed",
                 "message": "❌ Google Sheets connection test failed",
                 "details": {
                     "spreadsheet_id": sheets_service.spreadsheet_id,
+                    "spreadsheet_id_length": spreadsheet_id_length,
                     "worksheet_name": sheets_service.worksheet_name,
-                    "suggestion": "Check if the service account has access to the spreadsheet"
+                    "service_account_email": config.GOOGLE_SHEETS_CLIENT_EMAIL,
+                    "project_id": config.GOOGLE_SHEETS_PROJECT_ID,
+                    "troubleshooting": suggestions
+                },
+                "next_steps": {
+                    "1_get_correct_id": "Go to your Google Sheet > Copy the ID from the URL between '/d/' and '/edit'",
+                    "2_share_sheet": f"Share the Google Sheet with: {config.GOOGLE_SHEETS_CLIENT_EMAIL} (Editor access)",
+                    "3_example_url": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit"
                 }
             }
             
