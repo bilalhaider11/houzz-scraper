@@ -454,6 +454,232 @@ async def get_proxy_status():
         logger.error(f"Error getting proxy status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get proxy status: {str(e)}")
 
+@app.post(
+    "/clear-database",
+    response_model=Dict[str, Any],
+    tags=["System"],
+    summary="Clear Database and State Files",
+    description="Clear all database records and state manager files (USE WITH CAUTION)"
+)
+async def clear_database():
+    """
+    ## Clear Database and State Files
+    
+    **⚠️ WARNING: This is a destructive operation!**
+    
+    Clears all data from the system:
+    - Deletes all records from the SQLite database
+    - Removes the state manager file
+    - Resets the scraping progress
+    
+    **Returns:**
+    - Status of the clearing operation
+    - Details of what was cleared
+    """
+    try:
+        import os
+        from pathlib import Path
+        
+        cleared_items = []
+        errors = []
+        
+        # Clear database
+        db_path = Path(config.OUTPUT_DIR) / "scraper.db"
+        if db_path.exists():
+            try:
+                # Close any existing connections first
+                try:
+                    db_manager = DatabaseManager()
+                    db_manager.close()
+                except:
+                    pass
+                
+                # Remove the database file
+                os.remove(db_path)
+                cleared_items.append(f"Database: {db_path}")
+                logger.info(f"✅ Cleared database: {db_path}")
+            except Exception as e:
+                errors.append(f"Failed to clear database: {str(e)}")
+                logger.error(f"Failed to clear database: {e}")
+        else:
+            cleared_items.append("Database: Not found (already clean)")
+        
+        # Clear state manager file
+        state_file = Path("scraping_state.json")
+        if state_file.exists():
+            try:
+                os.remove(state_file)
+                cleared_items.append(f"State file: {state_file}")
+                logger.info(f"✅ Cleared state file: {state_file}")
+            except Exception as e:
+                errors.append(f"Failed to clear state file: {str(e)}")
+                logger.error(f"Failed to clear state file: {e}")
+        else:
+            cleared_items.append("State file: Not found (already clean)")
+        
+        # Clear log files (optional)
+        log_dir = Path(config.LOG_DIR)
+        if log_dir.exists():
+            try:
+                log_files_cleared = 0
+                for log_file in log_dir.glob("*.log"):
+                    try:
+                        os.remove(log_file)
+                        log_files_cleared += 1
+                    except Exception as e:
+                        logger.warning(f"Could not remove log file {log_file}: {e}")
+                
+                if log_files_cleared > 0:
+                    cleared_items.append(f"Log files: {log_files_cleared} files cleared")
+                else:
+                    cleared_items.append("Log files: No files found")
+            except Exception as e:
+                errors.append(f"Failed to clear log files: {str(e)}")
+        
+        # Return summary
+        if errors:
+            return {
+                "status": "partial_success",
+                "message": "⚠️ Database and state files partially cleared with some errors",
+                "cleared": cleared_items,
+                "errors": errors,
+                "note": "Some items could not be cleared. Check errors for details."
+            }
+        else:
+            return {
+                "status": "success",
+                "message": "✅ Database and state files cleared successfully!",
+                "cleared": cleared_items,
+                "note": "All scraping progress has been reset. The system will start fresh on the next scrape."
+            }
+            
+    except Exception as e:
+        logger.error(f"Error clearing database: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to clear database: {str(e)}"
+        )
+
+@app.get(
+    "/test-sheets-connection",
+    response_model=Dict[str, Any],
+    tags=["System"],
+    summary="Test Google Sheets Connection",
+    description="Verify that Google Sheets are successfully connected and accessible"
+)
+async def test_sheets_connection():
+    """
+    ## Test Google Sheets Connection
+    
+    Verifies that the Google Sheets integration is properly configured and accessible.
+    
+    **Returns:**
+    - Connection status (connected/not_connected)
+    - Spreadsheet information if connected
+    - Configuration status for tracking and profiles sheets
+    - Detailed error messages if connection fails
+    """
+    try:
+        from src.google_sheets_service import GoogleSheetsService
+        
+        # Initialize Google Sheets service
+        sheets_service = GoogleSheetsService()
+        
+        # Check if service is available
+        if not sheets_service.is_available():
+            return {
+                "status": "not_connected",
+                "message": "Google Sheets service is not available. Please check your configuration.",
+                "details": {
+                    "service_initialized": sheets_service.service is not None,
+                    "spreadsheet_id_configured": sheets_service.spreadsheet_id is not None,
+                    "tracking_spreadsheet_id": config.GOOGLE_SHEETS_SPREADSHEET_ID or "Not configured",
+                    "tracking_worksheet_name": config.GOOGLE_SHEETS_WORKSHEET_NAME or "Not configured",
+                    "profiles_spreadsheet_id": config.GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID or "Not configured",
+                    "profiles_worksheet_name": config.GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME or "Not configured",
+                }
+            }
+        
+        # Test the connection
+        connection_successful = sheets_service.test_connection()
+        
+        if connection_successful:
+            # Get spreadsheet metadata
+            try:
+                spreadsheet = sheets_service.service.spreadsheets().get(
+                    spreadsheetId=sheets_service.spreadsheet_id
+                ).execute()
+                
+                spreadsheet_title = spreadsheet.get('properties', {}).get('title', 'Unknown')
+                spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{sheets_service.spreadsheet_id}"
+                
+                # Get worksheet names
+                sheets_info = []
+                for sheet in spreadsheet.get('sheets', []):
+                    sheet_properties = sheet.get('properties', {})
+                    sheets_info.append({
+                        'name': sheet_properties.get('title', 'Unknown'),
+                        'id': sheet_properties.get('sheetId', 0),
+                        'rows': sheet_properties.get('gridProperties', {}).get('rowCount', 0),
+                        'columns': sheet_properties.get('gridProperties', {}).get('columnCount', 0)
+                    })
+                
+                return {
+                    "status": "connected",
+                    "message": "✅ Google Sheets connection successful!",
+                    "tracking_sheet": {
+                        "spreadsheet_id": sheets_service.spreadsheet_id,
+                        "spreadsheet_title": spreadsheet_title,
+                        "spreadsheet_url": spreadsheet_url,
+                        "worksheet_name": sheets_service.worksheet_name,
+                        "total_worksheets": len(sheets_info),
+                        "worksheets": sheets_info
+                    },
+                    "profiles_sheet": {
+                        "configured": bool(config.GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID),
+                        "spreadsheet_id": config.GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID or "Not configured",
+                        "worksheet_name": config.GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME or "Not configured"
+                    },
+                    "credentials": {
+                        "client_email": config.GOOGLE_SHEETS_CLIENT_EMAIL or "Not configured",
+                        "project_id": config.GOOGLE_SHEETS_PROJECT_ID or "Not configured"
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Error fetching spreadsheet metadata: {e}")
+                return {
+                    "status": "connected",
+                    "message": "✅ Google Sheets connection successful (limited metadata)",
+                    "tracking_sheet": {
+                        "spreadsheet_id": sheets_service.spreadsheet_id,
+                        "worksheet_name": sheets_service.worksheet_name
+                    },
+                    "note": f"Connected but couldn't fetch full metadata: {str(e)}"
+                }
+        else:
+            return {
+                "status": "connection_failed",
+                "message": "❌ Google Sheets connection test failed",
+                "details": {
+                    "spreadsheet_id": sheets_service.spreadsheet_id,
+                    "worksheet_name": sheets_service.worksheet_name,
+                    "suggestion": "Check if the service account has access to the spreadsheet"
+                }
+            }
+            
+    except ImportError as e:
+        logger.error(f"Failed to import Google Sheets service: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Google Sheets dependencies not installed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error testing Google Sheets connection: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to test Google Sheets connection: {str(e)}"
+        )
+
 @app.get(
     "/stats", 
     response_model=StatsResponse,

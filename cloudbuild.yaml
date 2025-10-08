@@ -1,4 +1,6 @@
 # Cloud Build configuration for Google Cloud Run deployment
+# Environment variables are set separately via deployment script (from .env file)
+# This keeps sensitive data out of version control
 steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
@@ -8,7 +10,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/houzz-scraper:$BUILD_ID']
   
-  # Deploy container image to Cloud Run
+  # Deploy container image to Cloud Run (without environment variables)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -26,14 +28,15 @@ steps:
       - '8Gi'
       - '--cpu'
       - '2'
+      - '--cpu-boost'
+      - '--execution-environment'
+      - 'gen2'
       - '--timeout'
       - '3600'
       - '--max-instances'
       - '1'
       - '--min-instances'
       - '1'
-      - '--set-env-vars'
-      - 'HEADLESS=true,TIMEOUT=30,MAX_PAGES_PER_STATE=2,OUTPUT_DIR=/tmp/data,LOG_DIR=/tmp/logs'
 
 # Store images in Google Container Registry
 images:

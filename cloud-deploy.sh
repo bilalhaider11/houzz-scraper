@@ -62,11 +62,53 @@ echo ""
 REGION="${REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-houzz-scraper}"
 
+# Ensure cloudbuild.yaml doesn't contain sensitive data
+echo -e "${BLUE}🔧 Verifying cloudbuild.yaml...${NC}"
+if [ -f ".env" ]; then
+    echo -e "${GREEN}✅ Environment variables will be loaded from .env file${NC}"
+else
+    echo -e "${YELLOW}⚠️  No .env file found${NC}"
+fi
+
+echo ""
 echo "Configuration:"
 echo "  Project ID: $PROJECT_ID"
 echo "  Region: $REGION"
 echo "  Service Name: $SERVICE_NAME"
 echo ""
+
+# Function to clear local database and state files
+clear_local_data() {
+    echo ""
+    echo -e "${BLUE}🧹 Clearing local database and state files...${NC}"
+    
+    # Remove SQLite database
+    if [ -f "data/scraper.db" ]; then
+        rm -f data/scraper.db
+        echo -e "${GREEN}✓ Removed database: data/scraper.db${NC}"
+    else
+        echo -e "${YELLOW}  Database file not found (already clean)${NC}"
+    fi
+    
+    # Remove state manager file
+    if [ -f "scraping_state.json" ]; then
+        rm -f scraping_state.json
+        echo -e "${GREEN}✓ Removed state file: scraping_state.json${NC}"
+    else
+        echo -e "${YELLOW}  State file not found (already clean)${NC}"
+    fi
+    
+    # Remove log files
+    if [ -d "logs" ] && [ "$(ls -A logs 2>/dev/null)" ]; then
+        rm -f logs/*.log
+        echo -e "${GREEN}✓ Cleared log files${NC}"
+    else
+        echo -e "${YELLOW}  No log files to clear${NC}"
+    fi
+    
+    echo -e "${GREEN}✅ Local data cleared successfully!${NC}"
+    echo ""
+}
 
 # Ask user what they want to do
 echo "What would you like to do?"
@@ -76,14 +118,22 @@ echo "3) Update environment variables only"
 echo "4) View service logs"
 echo "5) Get service URL"
 echo "6) Delete service"
+echo "7) Complete cleanup and redeploy (delete + fresh deploy)"
+echo "8) Clear local database and state files (without deploying)"
 echo ""
-read -p "Enter your choice (1-6): " CHOICE
+read -p "Enter your choice (1-8): " CHOICE
 
 case $CHOICE in
     1)
         echo ""
         echo -e "${BLUE}📋 Starting fresh deployment...${NC}"
         echo ""
+        
+        # Ask if user wants to clear local data before deploying
+        read -p "Clear local database and state files before deployment? (yes/no): " CLEAR_DATA
+        if [ "$CLEAR_DATA" = "yes" ] || [ "$CLEAR_DATA" = "y" ]; then
+            clear_local_data
+        fi
         
         # Enable required APIs
         echo "Enabling required Google Cloud APIs..."
@@ -103,37 +153,86 @@ case $CHOICE in
         echo -e "${GREEN}🎉 Deployment successful!${NC}"
         echo ""
         
+        # Automatically set environment variables from .env file
+        if [ -f ".env" ]; then
+            echo -e "${BLUE}🔧 Setting environment variables from .env file...${NC}"
+            
+            # Use Python to create a YAML file for gcloud
+            python3 -c "
+import os
+import yaml
+
+env_vars = {}
+with open('.env', 'r') as f:
+    for line in f:
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            # Remove quotes if present
+            if value.startswith('\"') and value.endswith('\"'):
+                value = value[1:-1]
+            env_vars[key] = value
+
+# Add base Cloud Run environment variables
+env_vars['HEADLESS'] = 'true'
+env_vars['TIMEOUT'] = '30'
+env_vars['MAX_PAGES_PER_STATE'] = '2'
+env_vars['OUTPUT_DIR'] = '/tmp/data'
+env_vars['LOG_DIR'] = '/tmp/logs'
+
+# Write to YAML file
+with open('.env.yaml', 'w') as f:
+    yaml.dump(env_vars, f, default_flow_style=False)
+"
+            
+            if [ -f ".env.yaml" ]; then
+                gcloud run services update $SERVICE_NAME \
+                    --region=$REGION \
+                    --env-vars-file=.env.yaml
+                echo -e "${GREEN}✅ Environment variables updated${NC}"
+                rm -f .env.yaml
+            fi
+        else
+            echo -e "${YELLOW}⚠️  No .env file found - skipping environment variable setup${NC}"
+        fi
+        
+        # Configure public access
+        echo ""
+        echo -e "${BLUE}🔓 Configuring public access...${NC}"
+        if gcloud run services add-iam-policy-binding $SERVICE_NAME \
+            --region=$REGION \
+            --member=allUsers \
+            --role=roles/run.invoker \
+            --quiet 2>/dev/null; then
+            echo -e "${GREEN}✅ Public access configured${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Public access already configured or failed${NC}"
+        fi
+        
         # Get service URL
         SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)' 2>/dev/null || echo "")
         
         if [ -n "$SERVICE_URL" ]; then
+            echo ""
             echo -e "${GREEN}Service URL: $SERVICE_URL${NC}"
+            echo "API Documentation: $SERVICE_URL/docs"
+            echo "Health Check: $SERVICE_URL/health"
         fi
         
         echo ""
-        echo -e "${YELLOW}⚠️  IMPORTANT: You need to set environment variables!${NC}"
-        echo ""
-        echo "Run this command to set your environment variables:"
-        echo ""
-        echo "gcloud run services update $SERVICE_NAME \\"
-        echo "  --region $REGION \\"
-        echo "  --update-env-vars \"ZEROBOUNCE_API_KEY=your_key\" \\"
-        echo "  --update-env-vars \"GOOGLE_SEARCH_API_KEY=your_key\" \\"
-        echo "  --update-env-vars \"GOOGLE_SEARCH_CX=your_cx\" \\"
-        echo "  --update-env-vars \"GOOGLE_SHEETS_CLIENT_EMAIL=your_email\" \\"
-        echo "  --update-env-vars \"GOOGLE_SHEETS_PROJECT_ID=your_project_id\" \\"
-        echo "  --update-env-vars \"GOOGLE_SHEETS_PRIVATE_KEY=your_private_key\" \\"
-        echo "  --update-env-vars \"GOOGLE_SHEETS_SPREADSHEET_ID=your_sheet_id\" \\"
-        echo "  --update-env-vars \"PROXY_USERNAME=your_proxy_user\" \\"
-        echo "  --update-env-vars \"PROXY_PASSWORD=your_proxy_pass\""
-        echo ""
-        echo "Or run: ./cloud-deploy.sh  (and choose option 3)"
+        echo -e "${GREEN}✅ Fresh deployment completed successfully!${NC}"
         ;;
         
     2)
         echo ""
         echo -e "${BLUE}📋 Redeploying service...${NC}"
         echo ""
+        
+        # Ask if user wants to clear local data before deploying
+        read -p "Clear local database and state files before deployment? (yes/no): " CLEAR_DATA
+        if [ "$CLEAR_DATA" = "yes" ] || [ "$CLEAR_DATA" = "y" ]; then
+            clear_local_data
+        fi
         
         gcloud builds submit --config cloudbuild.yaml
         
@@ -245,6 +344,137 @@ case $CHOICE in
             echo "Deleting service..."
             gcloud run services delete $SERVICE_NAME --region $REGION --quiet
             echo -e "${GREEN}✅ Service deleted${NC}"
+        else
+            echo "Cancelled"
+        fi
+        ;;
+        
+    7)
+        echo ""
+        echo -e "${BLUE}🧹 Starting complete cleanup and redeploy...${NC}"
+        echo ""
+        
+        # Ask if user wants to clear local data before deploying
+        read -p "Clear local database and state files before deployment? (yes/no): " CLEAR_DATA
+        if [ "$CLEAR_DATA" = "yes" ] || [ "$CLEAR_DATA" = "y" ]; then
+            clear_local_data
+        fi
+        
+        # Delete existing service
+        echo "Deleting existing service..."
+        if gcloud run services delete $SERVICE_NAME --region=$REGION --quiet; then
+            echo -e "${GREEN}✅ Service deleted${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Service deletion failed or service didn't exist${NC}"
+        fi
+        
+        # Wait a moment for cleanup
+        echo "Waiting for cleanup..."
+        sleep 5
+        
+        # Enable required APIs
+        echo "Enabling required Google Cloud APIs..."
+        gcloud services enable run.googleapis.com
+        gcloud services enable cloudbuild.googleapis.com
+        gcloud services enable containerregistry.googleapis.com
+        echo -e "${GREEN}✅ APIs enabled${NC}"
+        
+        # Build and deploy
+        echo ""
+        echo "Building and deploying to Cloud Run..."
+        echo "This may take 5-10 minutes..."
+        
+        if gcloud builds submit --config cloudbuild.yaml; then
+            echo ""
+            echo -e "${GREEN}🎉 Deployment completed successfully!${NC}"
+            echo ""
+            
+            # Automatically set environment variables from .env file
+            if [ -f ".env" ]; then
+                echo -e "${BLUE}🔧 Setting environment variables from .env file...${NC}"
+                
+                # Use Python to create a YAML file for gcloud
+                python3 -c "
+import os
+import yaml
+
+env_vars = {}
+with open('.env', 'r') as f:
+    for line in f:
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            # Remove quotes if present
+            if value.startswith('\"') and value.endswith('\"'):
+                value = value[1:-1]
+            env_vars[key] = value
+
+# Add base Cloud Run environment variables
+env_vars['HEADLESS'] = 'true'
+env_vars['TIMEOUT'] = '30'
+env_vars['MAX_PAGES_PER_STATE'] = '2'
+env_vars['OUTPUT_DIR'] = '/tmp/data'
+env_vars['LOG_DIR'] = '/tmp/logs'
+
+# Write to YAML file
+with open('.env.yaml', 'w') as f:
+    yaml.dump(env_vars, f, default_flow_style=False)
+"
+                
+                if [ -f ".env.yaml" ]; then
+                    gcloud run services update $SERVICE_NAME \
+                        --region=$REGION \
+                        --env-vars-file=.env.yaml
+                    echo -e "${GREEN}✅ Environment variables updated${NC}"
+                    rm -f .env.yaml
+                fi
+            else
+                echo -e "${YELLOW}⚠️  No .env file found - skipping environment variable setup${NC}"
+            fi
+            
+            # Configure public access
+            echo ""
+            echo -e "${BLUE}🔓 Configuring public access...${NC}"
+            if gcloud run services add-iam-policy-binding $SERVICE_NAME \
+                --region=$REGION \
+                --member=allUsers \
+                --role=roles/run.invoker \
+                --quiet 2>/dev/null; then
+                echo -e "${GREEN}✅ Public access configured${NC}"
+            else
+                echo -e "${YELLOW}⚠️  Public access already configured or failed${NC}"
+            fi
+            
+            # Get service URL
+            SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format="value(status.url)")
+            echo ""
+            echo "Service URL: $SERVICE_URL"
+            echo "API Documentation: $SERVICE_URL/docs"
+            echo "Health Check: $SERVICE_URL/health"
+            echo ""
+            echo -e "${GREEN}✅ Complete cleanup and redeploy finished!${NC}"
+        else
+            echo -e "${RED}❌ Deployment failed${NC}"
+            exit 1
+        fi
+        ;;
+        
+    8)
+        echo ""
+        echo -e "${BLUE}🧹 Clearing local database and state files only...${NC}"
+        echo -e "${RED}⚠️  WARNING: This will permanently delete:${NC}"
+        echo "   • SQLite database (data/scraper.db)"
+        echo "   • State manager file (scraping_state.json)"
+        echo "   • All log files (logs/*.log)"
+        echo ""
+        read -p "Are you sure you want to continue? (yes/no): " CONFIRM
+        
+        if [ "$CONFIRM" = "yes" ]; then
+            clear_local_data
+            echo -e "${GREEN}✅ Local data cleared successfully!${NC}"
+            echo ""
+            echo "Note: This only cleared local files. Cloud Run services are stateless."
+            echo "The deployed service will start fresh on next deployment."
         else
             echo "Cancelled"
         fi

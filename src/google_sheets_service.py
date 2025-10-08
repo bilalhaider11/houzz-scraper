@@ -245,15 +245,14 @@ class GoogleSheetsService:
                 for email in emails:
                     if email:  # Only add non-empty emails
                         profile_records.append([
-                            '',  # A: id (empty, can be auto-generated)
-                            email,  # B: email
-                            name,  # C: name
-                            '',  # D: last_sent_date (empty)
-                            '',  # E: templates_sent (empty)
-                            '',  # F: workspace_used (empty)
-                            '',  # G: replied (empty)
-                            '',  # H: status (empty)
-                            ''   # I: thread_id (empty)
+                            email,  # A: email
+                            name,   # B: name
+                            '',     # C: last_sent_date (empty)
+                            '',     # D: templates_sent (empty)
+                            '',     # E: workspace_used (empty)
+                            '',     # F: replied (empty)
+                            '',     # G: status (empty)
+                            ''      # H: thread_id (empty)
                         ])
             
             if not profile_records:
@@ -265,8 +264,8 @@ class GoogleSheetsService:
                 'values': profile_records
             }
             
-            # Append the profile records to the profiles sheet
-            range_name = f"{profiles_worksheet_name}!A:I"
+            # Append the profile records to the profiles sheet (starting from column A)
+            range_name = f"{profiles_worksheet_name}!A2:H"
             
             result = self.service.spreadsheets().values().append(
                 spreadsheetId=profiles_spreadsheet_id,
