@@ -127,11 +127,12 @@ class LeadEnrichmentPipeline:
             logger.info(f"✅ Phase 4 Complete: Email validation and processing finished successfully")
             
             # Step 5: Update Google Sheets with results (if enabled and successful)
-            if stats and not stats.get('error'):
-                logger.info("📊 Updating Google Sheets with pipeline results...")
-                await self._update_google_sheets(stats, row_number=row_number)
-                await self._update_profiles_sheet(stats)
-                logger.info("✅ Google Sheets updated successfully")
+            # COMMENTED OUT: Skipping Google Sheets update
+            # if stats and not stats.get('error'):
+            #     logger.info("📊 Updating Google Sheets with pipeline results...")
+            #     await self._update_google_sheets(stats, row_number=row_number)
+            #     await self._update_profiles_sheet(stats)
+            #     logger.info("✅ Google Sheets updated successfully")
             
             logger.info(f"🎉 PIPELINE COMPLETE: All 4 phases finished successfully!")
             return stats
