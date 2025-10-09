@@ -152,32 +152,57 @@ class LeadEnrichmentPipeline:
         """Validate email using ZeroBounce API"""
         try:
             from .zerobounce_verifier import ZeroBounceVerifier, ZeroBounceStatus
-            verifier = ZeroBounceVerifier()
-            result = await verifier.verify_single_email(email)
-            
-            # Handle different ZeroBounce statuses
-            if result.status == ZeroBounceStatus.VALID:
-                return True
-            elif result.status == ZeroBounceStatus.INVALID:
-                return False
-            elif result.status == ZeroBounceStatus.UNKNOWN:
-                # If ZeroBounce returns unknown (API error, etc.), do basic validation
-                logger.warning(f"ZeroBounce returned unknown status for {email}: {result.sub_status}")
-                # Do basic email format validation as fallback
-                import re
-                email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-                return bool(re.match(email_pattern, email))
-            else:
-                # For other statuses (catch-all, disposable, etc.), consider invalid
-                logger.info(f"Email {email} marked as invalid due to status: {result.status}")
-                return False
+            async with ZeroBounceVerifier() as verifier:
+                result = await verifier.verify_single_email(email)
+                
+                # Handle different ZeroBounce statuses
+                if result.status == ZeroBounceStatus.VALID:
+                    logger.info(f"✅ Email {email} validated by ZeroBounce: VALID")
+                    return True
+                elif result.status == ZeroBounceStatus.CATCH_ALL:
+                    # Include catch-all emails as they're often legitimate business emails
+                    logger.info(f"✅ Email {email} validated by ZeroBounce: CATCH-ALL (accepting)")
+                    return True
+                elif result.status == ZeroBounceStatus.INVALID:
+                    logger.info(f"❌ Email {email} rejected by ZeroBounce: INVALID")
+                    return False
+                elif result.status == ZeroBounceStatus.DISPOSABLE:
+                    logger.info(f"❌ Email {email} rejected by ZeroBounce: DISPOSABLE")
+                    return False
+                elif result.status == ZeroBounceStatus.SPAMTRAP:
+                    logger.info(f"❌ Email {email} rejected by ZeroBounce: SPAMTRAP")
+                    return False
+                elif result.status == ZeroBounceStatus.ABUSE:
+                    logger.info(f"❌ Email {email} rejected by ZeroBounce: ABUSE")
+                    return False
+                elif result.status == ZeroBounceStatus.UNKNOWN:
+                    # If ZeroBounce returns unknown (API error, etc.), do basic validation
+                    logger.warning(f"⚠️ ZeroBounce returned UNKNOWN status for {email}: {result.sub_status} - using regex fallback")
+                    # Do basic email format validation as fallback
+                    import re
+                    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+                    is_valid = bool(re.match(email_pattern, email))
+                    if is_valid:
+                        logger.info(f"✅ Email {email} passed regex validation (ZeroBounce was UNKNOWN)")
+                    else:
+                        logger.info(f"❌ Email {email} failed regex validation")
+                    return is_valid
+                else:
+                    # For any other unexpected statuses
+                    logger.warning(f"⚠️ Email {email} has unexpected ZeroBounce status: {result.status.value} - rejecting")
+                    return False
             
         except Exception as e:
             logger.error(f"ZeroBounce validation error for {email}: {e}")
             # If validation fails completely, do basic email format validation
             import re
             email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            return bool(re.match(email_pattern, email))
+            is_valid = bool(re.match(email_pattern, email))
+            if is_valid:
+                logger.info(f"✅ Email {email} passed regex validation (ZeroBounce API failed)")
+            else:
+                logger.info(f"❌ Email {email} failed regex validation")
+            return is_valid
 
     def _select_best_emails(self, emails_json: dict) -> Optional[List[str]]:
         """

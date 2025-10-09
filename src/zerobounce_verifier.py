@@ -109,7 +109,7 @@ class ZeroBounceVerifier:
                 try:
                     response_text = await response.text()
                     logger.debug(f"ZeroBounce raw response for {email}: {response_text[:200]}...")
-                    p
+                    
                     if not response_text.strip():
                         logger.error(f"ZeroBounce API returned empty response for email: {email}")
                         return ZeroBounceResult(
