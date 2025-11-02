@@ -12,8 +12,7 @@ docker-compose down
 # Remove named volumes (this clears all persistent data)
 echo "🗑️  Removing persistent data volumes..."
 docker volume rm houzz-scraper_houzz_data 2>/dev/null || echo "   Volume houzz-scraper_houzz_data not found"
-docker volume rm houzz-scraper
-_houzz_logs 2>/dev/null || echo "   Volume houzz-scraper_houzz_logs not found"
+docker volume rm houzz-scraper_houzz_logs 2>/dev/null || echo "   Volume houzz-scraper_houzz_logs not found"
 
 # Remove any dangling volumes
 echo "🧽 Cleaning up dangling volumes..."
