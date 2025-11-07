@@ -24,6 +24,7 @@ class ZeroBounceStatus(Enum):
     SPAMTRAP = "spamtrap"
     ABUSE = "abuse"
     DISPOSABLE = "disposable"
+    DO_NOT_MAIL = "do_not_mail"
     UNKNOWN_DOMAIN = "unknown_domain"
 
 
@@ -178,6 +179,7 @@ class ZeroBounceVerifier:
                     'spamtrap': ZeroBounceStatus.SPAMTRAP,
                     'abuse': ZeroBounceStatus.ABUSE,
                     'disposable': ZeroBounceStatus.DISPOSABLE,
+                    'do_not_mail': ZeroBounceStatus.DO_NOT_MAIL,
                     'unknown_domain': ZeroBounceStatus.UNKNOWN_DOMAIN
                 }
                 

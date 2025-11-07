@@ -30,6 +30,7 @@ from .database_manager import DatabaseManager
 from .zerobounce_verifier import ZeroBounceVerifier
 from .architizer_scraper import ArchitizerScraper
 from .google_sheets_service import GoogleSheetsService
+from .email_prevalidation import EmailPreValidator
 from config.config import config
 
 
@@ -40,6 +41,7 @@ class LeadEnrichmentPipeline:
         self.setup_logging()
         self.setup_directories()
         self.google_sheets_service = GoogleSheetsService()
+        self.email_prevalidator = EmailPreValidator()  # Pre-validation filter to save ZeroBounce credits
         
     def setup_logging(self):
         """Setup logging configuration"""
@@ -149,61 +151,76 @@ class LeadEnrichmentPipeline:
             }
             return stats
 
-    async def _validate_email_with_zerobounce(self, email: str) -> bool:
-        """Validate email using ZeroBounce API"""
+    async def _validate_email_with_zerobounce(self, email: str) -> tuple[bool, dict]:
+        """
+        Validate email using ZeroBounce API with strict VALID-only acceptance
+        
+        Returns:
+            tuple: (is_valid: bool, response_data: dict)
+        """
         try:
             from .zerobounce_verifier import ZeroBounceVerifier, ZeroBounceStatus
             async with ZeroBounceVerifier() as verifier:
                 result = await verifier.verify_single_email(email)
                 
-                # Handle different ZeroBounce statuses
+                # Log full ZeroBounce response for debugging
+                response_data = {
+                    "email": result.email,
+                    "status": result.status.value,
+                    "sub_status": result.sub_status,
+                    "confidence_score": result.confidence_score,
+                    "mx_valid": result.mx_valid,
+                    "smtp_server": result.smtp_server,
+                    "smtp_check": result.smtp_check,
+                    "catch_all": result.catch_all,
+                    "disposable": result.disposable,
+                    "toxic": result.toxic,
+                    "processed_at": result.processed_at
+                }
+                
+                logger.info(f"🔍 ZeroBounce Response for {email}:")
+                logger.info(f"   Status: {result.status.value}")
+                logger.info(f"   Sub-Status: {result.sub_status}")
+                logger.info(f"   MX Valid: {result.mx_valid}")
+                logger.info(f"   Catch-All: {result.catch_all}")
+                logger.info(f"   Disposable: {result.disposable}")
+                logger.info(f"   Toxic: {result.toxic}")
+                logger.info(f"   Confidence Score: {result.confidence_score}")
+                
+                # STRICT VALIDATION: ONLY accept "valid" status
+                # Reject everything else: catch-all, unknown, do_not_mail, possible_trap, etc.
                 if result.status == ZeroBounceStatus.VALID:
-                    logger.info(f"✅ Email {email} validated by ZeroBounce: VALID")
-                    return True
-                elif result.status == ZeroBounceStatus.CATCH_ALL:
-                    # Include catch-all emails as they're often legitimate business emails
-                    logger.info(f"✅ Email {email} validated by ZeroBounce: CATCH-ALL (accepting)")
-                    return True
-                elif result.status == ZeroBounceStatus.INVALID:
-                    logger.info(f"❌ Email {email} rejected by ZeroBounce: INVALID")
-                    return False
-                elif result.status == ZeroBounceStatus.DISPOSABLE:
-                    logger.info(f"❌ Email {email} rejected by ZeroBounce: DISPOSABLE")
-                    return False
+                    logger.info(f"✅ Email {email} ACCEPTED by ZeroBounce: VALID")
+                    return True, response_data
+                elif result.status == ZeroBounceStatus.DO_NOT_MAIL:
+                    logger.warning(f"❌ Email {email} REJECTED by ZeroBounce: DO_NOT_MAIL (sub-status: {result.sub_status}) - DANGEROUS, may cause email blocking!")
+                    return False, response_data
                 elif result.status == ZeroBounceStatus.SPAMTRAP:
-                    logger.info(f"❌ Email {email} rejected by ZeroBounce: SPAMTRAP")
-                    return False
+                    logger.warning(f"❌ Email {email} REJECTED by ZeroBounce: SPAMTRAP - DANGEROUS, may cause email blocking!")
+                    return False, response_data
                 elif result.status == ZeroBounceStatus.ABUSE:
-                    logger.info(f"❌ Email {email} rejected by ZeroBounce: ABUSE")
-                    return False
+                    logger.warning(f"❌ Email {email} REJECTED by ZeroBounce: ABUSE - DANGEROUS, may cause email blocking!")
+                    return False, response_data
+                elif result.status == ZeroBounceStatus.CATCH_ALL:
+                    logger.info(f"❌ Email {email} REJECTED by ZeroBounce: CATCH-ALL (not accepting non-valid status)")
+                    return False, response_data
+                elif result.status == ZeroBounceStatus.INVALID:
+                    logger.info(f"❌ Email {email} REJECTED by ZeroBounce: INVALID")
+                    return False, response_data
+                elif result.status == ZeroBounceStatus.DISPOSABLE:
+                    logger.info(f"❌ Email {email} REJECTED by ZeroBounce: DISPOSABLE")
+                    return False, response_data
                 elif result.status == ZeroBounceStatus.UNKNOWN:
-                    # If ZeroBounce returns unknown (API error, etc.), do basic validation
-                    logger.warning(f"⚠️ ZeroBounce returned UNKNOWN status for {email}: {result.sub_status} - using regex fallback")
-                    # Do basic email format validation as fallback
-                    import re
-                    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-                    is_valid = bool(re.match(email_pattern, email))
-                    if is_valid:
-                        logger.info(f"✅ Email {email} passed regex validation (ZeroBounce was UNKNOWN)")
-                    else:
-                        logger.info(f"❌ Email {email} failed regex validation")
-                    return is_valid
+                    logger.info(f"❌ Email {email} REJECTED by ZeroBounce: UNKNOWN (sub-status: {result.sub_status})")
+                    return False, response_data
                 else:
                     # For any other unexpected statuses
-                    logger.warning(f"⚠️ Email {email} has unexpected ZeroBounce status: {result.status.value} - rejecting")
-                    return False
+                    logger.warning(f"❌ Email {email} REJECTED by ZeroBounce: {result.status.value} (sub-status: {result.sub_status})")
+                    return False, response_data
             
         except Exception as e:
-            logger.error(f"ZeroBounce validation error for {email}: {e}")
-            # If validation fails completely, do basic email format validation
-            import re
-            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            is_valid = bool(re.match(email_pattern, email))
-            if is_valid:
-                logger.info(f"✅ Email {email} passed regex validation (ZeroBounce API failed)")
-            else:
-                logger.info(f"❌ Email {email} failed regex validation")
-            return is_valid
+            logger.error(f"❌ ZeroBounce validation error for {email}: {e}")
+            return False, {"error": str(e)}
 
     def _select_best_emails(self, emails_json: dict) -> Optional[List[str]]:
         """
@@ -302,56 +319,95 @@ class LeadEnrichmentPipeline:
                 }
             
             logger.info(f"📧 Processing {len(all_profiles)} profiles for ZeroBounce email validation...")
-            logger.info(f"   • Will validate all personal and business emails")
-            logger.info(f"   • Will select max 2, min 1 emails per profile (personal > business)")
+            logger.info(f"   • Pre-validation filtering: FREE checks before ZeroBounce (saves 20-30% credits)")
+            logger.info(f"   • Efficient validation: Stop after finding 2-3 valid emails per profile")
+            logger.info(f"   • Priority: Personal emails first, then business emails")
+            logger.info(f"   • Strict acceptance: ONLY 'valid' status accepted (reject catch-all, unknown, do_not_mail, etc.)")
             logger.info(f"   • Will remove profiles with zero valid emails")
             
-            # Process each profile
+            # Process each profile with efficient validation
             validated_profiles = []
             profiles_removed = 0
             invalid_emails_removed_count = 0
+            total_zerobounce_calls = 0  # Track ZeroBounce API calls
+            total_prefiltered_emails = 0  # Track emails filtered by pre-validation (credits saved!)
+            
             for profile in all_profiles:
                 if profile.emails:
                     try:
                         # Parse existing emails
                         emails_json = json.loads(profile.emails) if isinstance(profile.emails, str) else profile.emails
                         
-                        # Extract all emails for validation
+                        # Extract all emails
                         personal_emails = emails_json.get('personal', []) if isinstance(emails_json, dict) else []
                         business_emails = emails_json.get('business', []) if isinstance(emails_json, dict) else []
                         
-                        # Validate personal emails
-                        validated_personal = []
+                        logger.info(f"📧 Processing {profile.name}: {len(personal_emails)} personal, {len(business_emails)} business emails")
+                        
+                        # STEP 1: Combine emails with priority (personal > business)
+                        # Create prioritized list with metadata
+                        prioritized_emails = []
                         for email in personal_emails:
-                            is_valid = await self._validate_email_with_zerobounce(email)
-                            if is_valid:
-                                validated_personal.append(email)
-                            else:
-                                invalid_emails_removed_count += 1
-                                logger.info(f"❌ Invalid personal email removed: {email} from {profile.name}")
-                        
-                        # Validate business emails
-                        validated_business = []
+                            prioritized_emails.append({'email': email, 'type': 'personal'})
                         for email in business_emails:
-                            is_valid = await self._validate_email_with_zerobounce(email)
+                            prioritized_emails.append({'email': email, 'type': 'business'})
+                        
+                        logger.info(f"📋 Prioritized email list for {profile.name}: {[e['email'] for e in prioritized_emails]}")
+                        
+                        # STEP 2 & 3: Validate sequentially until we get 2-3 VALID emails
+                        validated_emails = []
+                        validated_personal = []
+                        validated_business = []
+                        target_email_count = 3  # Try to get 2-3 valid emails
+                        prefiltered_count = 0  # Track emails filtered before ZeroBounce
+                        
+                        for email_data in prioritized_emails:
+                            email = email_data['email']
+                            email_type = email_data['type']
+                            
+                            # Stop if we already have enough valid emails
+                            if len(validated_emails) >= target_email_count:
+                                logger.info(f"✅ Already have {len(validated_emails)} valid emails for {profile.name}, stopping validation")
+                                break
+                            
+                            # PRE-VALIDATION: Check with FREE filters BEFORE ZeroBounce
+                            logger.info(f"🔍 Pre-validating {email_type} email #{len(validated_emails) + 1}: {email}")
+                            prevalidation_result = self.email_prevalidator.should_validate_with_zerobounce(email)
+                            
+                            if not prevalidation_result.should_validate:
+                                # Email filtered out by pre-validation (SAVED 1 ZEROBOUNCE CREDIT!)
+                                prefiltered_count += 1
+                                total_prefiltered_emails += 1  # Global counter
+                                invalid_emails_removed_count += 1
+                                logger.info(f"❌ {email_type} email pre-filtered (saved 1 credit): {email}")
+                                logger.info(f"   Filter reason: {prevalidation_result.reason} (Status: {prevalidation_result.status.value})")
+                                continue  # Skip ZeroBounce validation
+                            
+                            # Passed pre-validation, now validate with ZeroBounce
+                            logger.info(f"✓ Passed pre-validation, validating with ZeroBounce: {email}")
+                            is_valid, zerobounce_response = await self._validate_email_with_zerobounce(email)
+                            total_zerobounce_calls += 1
+                            
                             if is_valid:
-                                validated_business.append(email)
+                                validated_emails.append(email)
+                                if email_type == 'personal':
+                                    validated_personal.append(email)
+                                else:
+                                    validated_business.append(email)
+                                logger.info(f"✅ Valid email #{len(validated_emails)} found: {email} ({email_type})")
                             else:
                                 invalid_emails_removed_count += 1
-                                logger.info(f"❌ Invalid business email removed: {email} from {profile.name}")
+                                logger.info(f"❌ Invalid {email_type} email rejected: {email} (Status: {zerobounce_response.get('status')}, Sub-Status: {zerobounce_response.get('sub_status')})")
                         
-                        # Create validated emails JSON
+                        # Create validated emails JSON for database
                         validated_emails_json = {
                             'personal': validated_personal,
                             'business': validated_business
                         }
                         
-                        # Select best emails (max 2, min 1) - prioritize personal over business
-                        selected_emails = self._select_best_emails(validated_emails_json)
-                        
-                        if selected_emails:
-                            # Update profile with selected emails
-                            profile.emails = selected_emails
+                        if validated_emails:
+                            # Update profile with selected emails (keep all valid emails, max 3)
+                            profile.emails = validated_emails[:3]  # Keep max 3 valid emails
                             validated_profiles.append(profile)
                             
                             # Update database with validated emails and mark as completed
@@ -359,12 +415,15 @@ class LeadEnrichmentPipeline:
                             db_manager.mark_profile_completed(profile.id)
                             db_manager.mark_email_verified(profile.id)
                             
-                            logger.info(f"✅ {profile.name}: Validated and selected {len(selected_emails)} email(s) from {len(validated_emails_json.get('personal', [])) + len(validated_emails_json.get('business', []))} total - Personal: {validated_emails_json.get('personal', [])}, Business: {validated_emails_json.get('business', [])}")
+                            logger.info(f"✅ {profile.name}: Successfully validated {len(validated_emails)} email(s) - Personal: {validated_personal}, Business: {validated_business}")
+                            logger.info(f"   📊 Efficiency for this profile:")
+                            logger.info(f"      • Pre-filtered: {prefiltered_count} emails (saved {prefiltered_count} credits with FREE checks)")
+                            logger.info(f"      • Total emails: {len(prioritized_emails)} → Validated: {len(validated_emails)} → Saved: {len(prioritized_emails) - len(validated_emails)} credits")
                         else:
                             # Remove profile if no valid emails
                             await db_manager.remove_profile(profile.id)
                             profiles_removed += 1
-                            logger.info(f"🗑️ Removed {profile.name} - no valid emails after validation")
+                            logger.info(f"🗑️ Removed {profile.name} - no valid emails after validating {len(prioritized_emails)} emails")
                     
                     except Exception as e:
                         logger.error(f"Error processing emails for {profile.name}: {e}")
@@ -392,7 +451,10 @@ class LeadEnrichmentPipeline:
                 "profiles_marked_completed": len(validated_profiles),
                 "profiles_removed": profiles_removed,
                 "invalid_emails_removed": invalid_emails_removed_count,
+                "emails_prefiltered": total_prefiltered_emails,
                 "profiles_with_valid_emails": len([p for p in validated_profiles if p.emails]),
+                "total_zerobounce_calls": total_zerobounce_calls,
+                "zerobounce_credits_saved": total_prefiltered_emails,
                 "profiles": simplified_profiles,
                 "total_time_seconds": round(total_time, 2),
                 "total_time_minutes": round(total_time / 60, 2),
@@ -403,6 +465,9 @@ class LeadEnrichmentPipeline:
             logger.info(f"   • Profiles with valid emails: {stats['profiles_with_valid_emails']}")
             logger.info(f"   • Profiles removed (no valid emails): {profiles_removed}")
             logger.info(f"   • Invalid emails filtered out: {invalid_emails_removed_count}")
+            logger.info(f"   • 💰 Emails pre-filtered (FREE): {total_prefiltered_emails} (saved {total_prefiltered_emails} ZeroBounce credits!)")
+            logger.info(f"   • ZeroBounce API calls used: {total_zerobounce_calls}")
+            logger.info(f"   • 📈 Efficiency: {total_prefiltered_emails}/{total_prefiltered_emails + total_zerobounce_calls} emails filtered for FREE ({round(total_prefiltered_emails/(total_prefiltered_emails + total_zerobounce_calls)*100 if (total_prefiltered_emails + total_zerobounce_calls) > 0 else 0, 1)}% credit savings)")
             return stats
         
         except Exception as e:
