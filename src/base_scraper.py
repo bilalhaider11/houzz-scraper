@@ -159,7 +159,6 @@ class BaseScraper:
         await self.set_page_headers(page)
         await page.route("**/*", self._block_unnecessary_resources)
         await page.route("**/*", self._log_network_request)
-        
         return page
 
     async def set_page_headers(self, page: Page):
@@ -207,6 +206,7 @@ class BaseScraper:
         # Only log requests that are essential for scraping
         essential_patterns = [
             r'https://www\.houzz\.com/professionals/.*?/.*?-.*?probr0-bo~.*?',  # Search pages
+            r'https://www\.houzz\.com/professionals/hznb/.*?/.*?-.*?probr0-bo~.*?',
             r'https://www\.houzz\.com/professionals/.*?/.*?-pfvwus-pf~.*?'      # Profile pages
         ]
         

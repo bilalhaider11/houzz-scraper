@@ -365,20 +365,20 @@ class LeadEnrichmentPipeline:
                             
                             # Passed pre-validation, now validate with ZeroBounce
                             logger.info(f"✓ Passed pre-validation, validating with ZeroBounce: {email}")
-                            is_valid, zerobounce_response = await self._validate_email_with_zerobounce(email)
-                            total_zerobounce_calls += 1
-                            
-                            if is_valid:
-                                validated_emails.append(email)
-                                if email_type == 'personal':
-                                    validated_personal.append(email)
-                                else:
-                                    validated_business.append(email)
-                                logger.info(f"✅ Valid email #{len(validated_emails)} found: {email} ({email_type})")
-                            else:
-                                invalid_emails_removed_count += 1
-                                logger.info(f"❌ Invalid {email_type} email rejected: {email} (Status: {zerobounce_response.get('status')}, Sub-Status: {zerobounce_response.get('sub_status')})")
-                        
+                            #is_valid, zerobounce_response = await self._validate_email_with_zerobounce(email)
+                            #total_zerobounce_calls += 1
+                            #
+                            #if is_valid:
+                            #    validated_emails.append(email)
+                            #    if email_type == 'personal':
+                            #        validated_personal.append(email)
+                            #    else:
+                            #        validated_business.append(email)
+                            #    logger.info(f"✅ Valid email #{len(validated_emails)} found: {email} ({email_type})")
+                            #else:
+                            #    invalid_emails_removed_count += 1
+                            #    logger.info(f"❌ Invalid {email_type} email rejected: {email} (Status: {zerobounce_response.get('status')}, Sub-Status: {zerobounce_response.get('sub_status')})")
+                        #
                         # Create validated emails JSON for database
                         validated_emails_json = {
                             'personal': validated_personal,
@@ -750,7 +750,7 @@ class LeadEnrichmentPipeline:
                 except Exception as e:
                     logger.error(f"Error closing database connection: {e}")
 
-    async def scrape_houzz_profiles(self, location: str, professional_type: str, max_pages: int = 50, start_page: int = 1) -> List[ProfessionalProfile]:
+    async def   scrape_houzz_profiles(self, location: str, professional_type: str, max_pages: int = 50, start_page: int = 1) -> List[ProfessionalProfile]:
         """Scrape Houzz profiles for a single location and profession"""
         profiles = []
         db_manager = None
@@ -767,9 +767,9 @@ class LeadEnrichmentPipeline:
                 logger.info(f"  Max pages: {max_pages}")
                 logger.info(f"  Starting page: {start_page}")
                 
-                # Scrape using the location-based method
+                # Scrape using the location-based   method
                 logger.info(f"\n🔍 Starting scrape for {professional_type} at location '{location}'")
-                
+                    
                 # Use the new location-based scraping method
                 location_profiles = await scraper.get_professionals_by_location(
                     location=location,

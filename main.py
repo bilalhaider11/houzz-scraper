@@ -814,10 +814,15 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                 )
 
             # Normalize location input (handle USA variations)
-            location_lower = request.location.lower().strip()
+            location_lower = request.location.lower().strip() 
+         
             # Normalize United States and USA variations to 'usa'
             if location_lower in ['united states', 'usa', 'us']:
                 request.location = 'usa'
+                
+            elif location_lower in ['united-kingdom-of-great-britain-and-northern-ireland','united-kingdom','uk','UK','United-Kingdom']:
+                request.location = 'united-kingdom-of-great-britain-and-northern-ireland'
+            
             # Validate location exists in LOCATION_REGION_MAP
             if request.location not in config.LOCATION_REGION_MAP:
                 available_locations = list(config.LOCATION_REGION_MAP.keys())

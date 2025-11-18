@@ -80,9 +80,15 @@ class HouzzScraper(BaseScraper):
 
             # Get region_id from location mapping using dictionary access
             region_id = config.LOCATION_REGION_MAP[location]
-            base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
-            logger.info(f"Scraping {professional_type} for location '{location}' (region: {region_id}): {base_url}")
             
+            
+            if location == 'usa':
+                base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
+                logger.info(f"Scraping {professional_type} for location '{location}' (region: {region_id}): {base_url}")#hznb
+            else:    
+                base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/hznb/{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
+                logger.info(f"Scraping {professional_type} for location '{location}' (region: {region_id}): {base_url}")
+                
             pages_scraped = 0
             max_pages_to_scrape = max_pages if max_pages is not None else 100
             
@@ -126,7 +132,9 @@ class HouzzScraper(BaseScraper):
 
             # Log summary
             logger.info(f"📊 Completed scraping location '{location}' for {professional_type}: scraped {pages_scraped} pages successfully")
+        except Exception as e:
             
+            logger.error("sdklfjslhfsgfkfdgiewurrewfugfhsiivdsvfdsigushfidshgsiugsiughsghsghsgsgsgsgs")   
         finally:
             if page:
                 await page.close()
@@ -152,7 +160,7 @@ class HouzzScraper(BaseScraper):
                 await asyncio.sleep(random.uniform(2, 4))
                 
                 # Extract professionals directly from the listing page
-                page_professionals = await self.extract_professionals_from_listing_page(page, professional_type)
+                page_professionals = await self.extract_professionals_from_listing_page(page, professional_type,location)
                 
                 if not page_professionals:
                     logger.info(f"No more professionals found on page {page_num} for {location}/{professional_type}")
@@ -162,7 +170,7 @@ class HouzzScraper(BaseScraper):
                 return page_professionals
                 
             except Exception as e:
-                last_exception = e
+                
                 logger.warning(f"Error scraping page {page_num} for {location}/{professional_type} on attempt {attempt + 1}: {e}")
                 
                 if attempt < max_retries - 1:
@@ -172,6 +180,7 @@ class HouzzScraper(BaseScraper):
                 else:
                     logger.error(f"❌ Final attempt failed: {url} due to {e}")
                     self.state_manager.mark_url_failed(url, platform="houzz")
+                    
                     return []
 
         return []
@@ -207,7 +216,7 @@ class HouzzScraper(BaseScraper):
             raise
     
     
-    async def extract_professionals_from_listing_page(self, page: Page, professional_type: str = '') -> List[ProfessionalProfile]:
+    async def extract_professionals_from_listing_page(self, page: Page, professional_type: str = '',location:str = '') -> List[ProfessionalProfile]:
         """Extract professional data directly from listing page"""
         professionals = []
         
@@ -219,15 +228,14 @@ class HouzzScraper(BaseScraper):
             
             # Get page content for parsing
             content = await page.content()
-            soup = BeautifulSoup(content, 'html.parser')
             
+            soup = BeautifulSoup(content, 'html.parser')
             # Find professional listing containers
             professional_containers = self._find_professional_containers(soup)
-            
             # Extract data from each professional container
             for container in professional_containers:
                 try:
-                    profile = await self.extract_professional_from_container(container, page, professional_type)
+                    profile = await self.extract_professional_from_container(container, page, professional_type,location)
                     if profile and profile.name:  # Only add if we got a name
                         professionals.append(profile)
                         log_utils.log_profile_extracted(profile.name)
@@ -261,7 +269,7 @@ class HouzzScraper(BaseScraper):
         
         return []
     
-    async def extract_professional_from_container(self, container, page: Page, professional_type: str = '') -> Optional[ProfessionalProfile]:
+    async def extract_professional_from_container(self, container, page: Page, professional_type: str = '',location:str = '') -> Optional[ProfessionalProfile]:
         """Extract professional data from a single container element"""
         try:
             # Extract JSON-LD data if available
@@ -274,7 +282,10 @@ class HouzzScraper(BaseScraper):
                     logger.debug(f"JSON decode error: {e}")
 
             # Get profile URL from the container
-            link_elem = container.select_one('a[href*="pfvwus-pf~"]')
+            getUserId = config.USER_BASE_ID_MAPPING[location]
+            selector = f'a[href*="pfvw{getUserId}-pf~"]'
+            link_elem = container.select_one(selector)
+            
             if not link_elem or not link_elem.get('href'):
                 logger.debug("No profile link found in container")
                 return None
