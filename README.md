@@ -2,25 +2,23 @@
 
 **Latest Update: September 2025** - Complete FastAPI refactoring with HTTP endpoints for all scraping functionality
 
-A production-ready FastAPI application for scraping and enriching leads from **Houzz** and **Architizer** across all 50 U.S. states and 7+ professional types. Features advanced ZeroBounce integration, Google Custom Search enrichment, Playwright-based website mining, and intelligent email prioritization - all accessible through HTTP endpoints.
+A production-ready FastAPI application for scraping and enriching leads from **Houzz** and **Architizer** across all 50 U.S. states and 7+ professional types. Features advanced ZeroBounce integration, Playwright-based website mining, and intelligent email prioritization - all accessible through HTTP endpoints.
 
 ## ✨ Core Features
 
 ### 🎯 Multi-Platform Support
 - **🏠 Houzz Integration**: Scrapes 50+ US states and 7 professional types
 - **🏗️ Architizer Integration**: Scrapes architectural firms and professionals
-- **🔄 Unified Pipeline**: Same 4-phase process for both platforms
+- **🔄 Unified Pipeline**: Same 3-phase process for both platforms
 
-### 🚀 4-Phase Pipeline Architecture
+### 🚀 3-Phase Pipeline Architecture
 - **Phase 1**: Platform Profile Scraping (Houzz/Architizer)
 - **Phase 2**: Advanced Website Email Mining (Playwright)
-- **Phase 3**: Google Custom Search Enrichment
-- **Phase 4**: Email Validation & Processing with Google Sheets Integration
+- **Phase 3**: Email Validation & Processing with Google Sheets Integration
 
 ### 🔧 Advanced Features
 - **✅ ZeroBounce Integration**: Production-grade email verification with smart credit management
 - **🌐 Playwright Automation**: JavaScript-heavy website scraping with browser automation
-- **🔍 Optimized Google Custom Search**: Advanced query strategies with 400-500% better coverage, finds Gmail addresses and social media profiles across 7+ platforms
 - **📊 Intelligent Email Selection**: Smart selection (max 2, min 1) prioritizing personal > business emails
 - **📈 Google Sheets Integration**: Automated results tracking and profile management for email campaigns
 - **💾 SQLite Database**: Persistent storage with progress tracking and resume capability
@@ -206,12 +204,9 @@ nano .env
 
 **Required API Keys:**
 - **ZeroBounce API Key**: For production-grade email verification ([Get API key](https://www.zerobounce.net/))
-- **Google Custom Search API**: For Gmail discovery and social media profile enrichment ([Setup instructions below](#google-custom-search-api-setup))
-- **Google Custom Search CX**: Search engine ID for Custom Search API
 
 **Note**: The pipeline can run without API keys but with reduced functionality:
 - Without ZeroBounce: Basic email validation only (use `--no-email-verification`)
-- Without Google APIs: No Gmail discovery or social media profile enrichment
 
 ### 3. Activate Virtual Environment (Local Installation Only)
 
@@ -299,9 +294,9 @@ curl -X POST http://localhost:8000/scrape \
   }'
 ```
 
-## 🔄 4-Phase Pipeline Process
+## 🔄 3-Phase Pipeline Process
 
-The Lead Generation Pipeline operates in 4 distinct phases, each designed for optimal data extraction and enrichment:
+The Lead Generation Pipeline operates in 3 distinct phases, each designed for optimal data extraction and enrichment:
 
 ### Phase 1: 🏠 Platform Profile Scraping
 **What it does:**
@@ -351,31 +346,7 @@ curl -X POST http://localhost:8000/scrape \
 
 ---
 
-### Phase 3: 🔍 Google Custom Search Enrichment
-**What it does:**
-- Uses optimized Google Custom Search API with multiple query strategies
-- Performs 4-5 targeted query variations per search type for maximum coverage
-- Discovers social media profiles across 7+ platforms (LinkedIn, Facebook, Instagram, Twitter/X, Pinterest, YouTube)
-- Finds personal Gmail addresses using intelligent query construction
-- Applies advanced relevance scoring to filter high-quality results
-- Enriches existing data with additional personal contact methods
-- Merges new email findings with existing website-scraped emails
-- Applies intelligent deduplication and prioritization
-- Finds zipcodes and additional location data
-
-**Note:** This phase runs automatically as part of the complete pipeline.
-
-**Output:** Profiles further enriched with Gmail addresses, social media profile URLs, and location data.
-
-**Key Optimizations:**
-- **Multiple Query Strategies**: 4-5 query variations per search type for 400-500% better coverage
-- **Advanced Relevance Scoring**: Comprehensive scoring system with percentage-based thresholds
-- **Intelligent Domain Processing**: Optimized domain and business name variations
-- **Platform-Specific Targeting**: Tailored queries for each social media platform
-
----
-
-### Phase 4: ✅ Email Validation & Processing with Google Sheets Integration
+### Phase 3: ✅ Email Validation & Processing with Google Sheets Integration
 **What it does:**
 **Email Validation (ZeroBounce):**
 - Verifies email deliverability using ZeroBounce API
@@ -432,7 +403,7 @@ curl -X POST http://localhost:8000/scrape \
 
 **Phase Execution Order:**
 ```
-1. Platform Scraping → 2. Website Email Mining → 3. Google Search Enrichment → 4. Validation & Processing
+1. Platform Scraping → 2. Website Email Mining → 3. Validation & Processing
 ```
 
 **Key Benefits:**
@@ -570,7 +541,6 @@ The `professionals` table includes the following columns:
 | `followers_count` | INTEGER | Number of followers |
 | `is_email_verified` | INTEGER | Email verification status (0/1) |
 | `website_scraped` | INTEGER | Website scraping status (0/1) |
-| `google_search_done` | INTEGER | Google search status (0/1) |
 | `is_completed` | INTEGER | Export completion status (0/1) |
 | `created_at` | TIMESTAMP | Record creation timestamp |
 | `updated_at` | TIMESTAMP | Record update timestamp |
@@ -602,8 +572,8 @@ SELECT profile_url, name, website, phone, emails FROM professionals LIMIT 10;
 SELECT 
   COUNT(*) as total_profiles,
   SUM(website_scraped) as websites_scraped,
-  SUM(google_search_done) as google_searches_done,
-  SUM(is_email_verified) as emails_verified
+  SUM(is_email_verified) as emails_verified,
+  SUM(is_completed) as completed_profiles
 FROM professionals;
 
 -- Exit
@@ -629,11 +599,10 @@ houzz-scraper/
 │   └── config.py          # Configuration settings
 ├── src/
 │   ├── models.py          # Data models and validation
-│   ├── pipeline.py        # Main 4-phase orchestration pipeline
+│   ├── pipeline.py        # Main 3-phase orchestration pipeline
 │   ├── houzz_scraper.py   # Houzz website scraper
 │   ├── architizer_scraper.py # Architizer website scraper
 │   ├── website_scraper.py # Professional website scraper (Playwright)
-│   ├── google_searcher.py # Google Custom Search enrichment
 │   ├── zerobounce_verifier.py # ZeroBounce email verification
 │   ├── database_manager.py # SQLite database manager
 │   ├── database_pool.py   # Database connection pooling
@@ -663,7 +632,7 @@ The FastAPI application provides the following endpoints:
 - **GET `/proxy-status`** - Get proxy rotation status and configuration
 
 ### Scraping Operations
-- **POST `/scrape`** - Start a scraping job with the complete 4-phase pipeline
+- **POST `/scrape`** - Start a scraping job with the complete 3-phase pipeline
 
 ### Request/Response Models
 
@@ -703,10 +672,8 @@ The FastAPI application provides the following endpoints:
   "stats": {
     "total_profiles": 1250,
     "websites_scraped": 890,
-    "google_searches_done": 450,
     "completed_profiles": 1200,
     "websites_pending": 50,
-    "google_searches_pending": 25,
     "profiles_pending_completion": 30
   }
 }
@@ -755,8 +722,6 @@ Create a `.env` file in the project root with the following variables:
 ```bash
 # Required API Keys
 ZEROBOUNCE_API_KEY=your_zerobounce_api_key_here
-GOOGLE_SEARCH_API_KEY=your_google_api_key_here
-GOOGLE_SEARCH_CX=your_google_custom_search_engine_id_here
 
 # Optional Google Sheets Integration (for automated results tracking)
 GOOGLE_SHEETS_SPREADSHEET_ID=your_tracking_spreadsheet_id
@@ -856,7 +821,6 @@ The system prioritizes emails in the following order:
 | `is_email_verified` | Email verification status |
 | `zip_code` | ZIP code |
 | `website_scraped` | Website scraping status |
-| `google_search_done` | Google search status |
 | `created_at` | Record creation timestamp |
 | `updated_at` | Record update timestamp |
 
@@ -870,60 +834,6 @@ The system prioritizes emails in the following order:
 - **Session Management**: Maintains realistic browsing patterns
 - **Rate Limiting**: Respects website rate limits
 - **Error Handling**: Graceful failure handling
-
-## 🔍 Google Searcher Optimizations
-
-### Advanced Query Strategy
-The Google Custom Search integration has been significantly optimized for maximum result coverage and relevance:
-
-#### Multiple Query Variations
-- **Email Searches**: 5 different query strategies for finding personal emails
-- **Social Media Searches**: 4 query variations per platform (LinkedIn, Facebook, Instagram, Twitter/X, Pinterest, YouTube)
-- **Coverage Improvement**: 400-500% increase in search coverage compared to single-query approach
-
-#### Query Types
-**Email Search Variations:**
-1. Direct Name + Domain + Email Domains (most specific)
-2. Name + Professional Type + Email Domains (broader)
-3. Name + Domain Variations + Email (if domain available)
-4. Name + Contact Keywords + Email (contact-focused)
-5. Name + Business Context + Email (role-focused)
-
-**Social Media Search Variations:**
-1. Direct Name + Platform Site Restriction (most specific)
-2. Name + Business Variations + Platform (business-focused)
-3. Name + Domain + Platform (domain-focused)
-4. Name + Location + Platform (location-focused)
-5. Name + Professional Keywords + Platform (role-focused)
-6. Name + Platform Keywords + Platform (platform-focused)
-
-#### Advanced Relevance Scoring
-- **Comprehensive Scoring System**: Multiple factors weighted for relevance
-- **Business Name Matches**: 5 points (title), 3 points (snippet)
-- **Professional Type Matches**: 2 points per word
-- **Business Role Indicators**: 2 points per keyword
-- **Location Indicators**: 1 point per US location
-- **Industry Keywords**: 2 points per relevant term
-- **Profile Completeness**: 1 point per indicator
-- **Penalties**: -3 points for irrelevant indicators (student, intern, etc.)
-
-#### Threshold Requirements
-- **Minimum Absolute Score**: 4 points
-- **Minimum Percentage**: 20% of max possible score
-- **Result**: Significant reduction in false positives
-
-#### Performance Features
-- **Intelligent Caching**: Domain variations cached for efficiency
-- **Rate Limiting**: Proper API quota management (100 requests/day limit)
-- **Error Handling**: Comprehensive retry logic with exponential backoff
-- **Request Optimization**: Minimum delays between requests
-
-### Test Results
-Recent testing showed excellent performance:
-- **Sarah Johnson Design Studio**: 13 emails + 65 social profiles across 7 platforms
-- **Michael Chen Architects**: 7 emails + 45 social profiles across 7 platforms
-- **Query Success Rate**: High success rates across all query variations
-- **API Efficiency**: 78/100 requests used efficiently
 
 ## 📊 Production Monitoring
 
@@ -948,16 +858,16 @@ Recent testing showed excellent performance:
 ### Sample Output Statistics
 - **Total Profiles**: 50,000-100,000+ (depending on scope)
 - **Complete Contacts**: ~60-80% with all required fields
-- **Personal Emails**: ~30-40% of total (enhanced with optimized Google search)
+- **Personal Emails**: ~20-30% of total (extracted from websites)
 - **Company Emails**: ~40-50% of total  
 - **Phone Numbers**: ~70-85% coverage
 - **Zip Codes**: ~80-90% coverage
-- **Social Media Profiles**: ~40-60% coverage across 7+ platforms (LinkedIn, Facebook, Instagram, Twitter/X, Pinterest, YouTube)
+- **Social Media Profiles**: ~30-50% coverage across 7+ platforms (extracted from websites)
 
 ### CSV File Format
 ```csv
-profile_url,name,website,emails,phone,address,professional_type,linkedin_links,facebook_links,instagram_links,twitter_links,pinterest_links,youtube_links,other_social_links,is_email_verified,zip_code,website_scraped,google_search_done,created_at,updated_at
-https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":[""john.smith@gmail.com""],""business"":[""info@example.com""]}",+15551234567,123 Main St,interior-designer,"[""https://linkedin.com/in/johnsmith""]","[""https://facebook.com/johnsmith""]","[""https://instagram.com/johnsmith""]","[""https://twitter.com/johnsmith""]","[""https://pinterest.com/johnsmith""]","[""https://youtube.com/johnsmith""]","[]",1,90210,1,1,2024-01-15T10:30:00,2024-01-15T10:30:00
+profile_url,name,website,emails,phone,address,professional_type,linkedin_links,facebook_links,instagram_links,twitter_links,pinterest_links,youtube_links,other_social_links,is_email_verified,zip_code,website_scraped,created_at,updated_at
+https://www.houzz.com/pro/example,John Smith,https://example.com,"{""personal"":[""john.smith@gmail.com""],""business"":[""info@example.com""]}",+15551234567,123 Main St,interior-designer,"[""https://linkedin.com/in/johnsmith""]","[""https://facebook.com/johnsmith""]","[""https://instagram.com/johnsmith""]","[""https://twitter.com/johnsmith""]","[""https://pinterest.com/johnsmith""]","[""https://youtube.com/johnsmith""]","[]",1,90210,1,2024-01-15T10:30:00,2024-01-15T10:30:00
 ```
 
 ## 🐛 Troubleshooting
@@ -997,38 +907,6 @@ curl http://localhost:8000/stats
 # Check database status
 sqlite3 data/scraper.db "SELECT COUNT(*) FROM professionals;"
 ```
-
-## 🔧 Google Custom Search API Setup
-
-To enable Gmail discovery and social media profile enrichment, you need to set up Google Custom Search API:
-
-### 1. Create Google Cloud Project
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable the Custom Search API
-
-### 2. Create API Key
-1. Go to "APIs & Services" > "Credentials"
-2. Click "Create Credentials" > "API Key"
-3. Copy the API key to your `.env` file
-
-### 3. Create Custom Search Engine
-1. Go to [Google Programmable Search Engine](https://programmablesearchengine.google.com/)
-2. Click "Create a search engine"
-3. Enter any website (e.g., `https://www.google.com`)
-4. Get your Search Engine ID (cx) and add to `.env` file
-
-### 4. Configure Search Settings
-1. In your search engine settings, enable "Search the entire web"
-2. Add sites to search: `linkedin.com`, `facebook.com`, `instagram.com`, `twitter.com`, `x.com`, `pinterest.com`, `youtube.com`, `tiktok.com`, `gmail.com`, etc.
-
-### 5. Optimized Search Features
-The system now includes advanced query optimization:
-- **Multiple Query Variations**: 4-5 different search strategies per target
-- **Intelligent Domain Processing**: Optimized domain and business name variations
-- **Advanced Relevance Scoring**: Comprehensive filtering system
-- **Platform-Specific Targeting**: Tailored queries for each social media platform
-- **Rate Limiting & Caching**: Efficient API usage with smart caching
 
 ## 🤝 Contributing
 

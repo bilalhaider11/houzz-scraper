@@ -1,10 +1,9 @@
 """Lead Enrichment Pipeline for the Houzz Lead Generation System.
 
-4-Phase Pipeline Architecture:
+3-Phase Pipeline Architecture:
 1. Platform Profile Scraping (Houzz/Architizer) - Extracts professional profiles
 2. Website Email Mining (Playwright) - Extracts emails, phones, and social links from websites
-3. Google Search Enrichment - Finds Gmail addresses, social profiles, and zipcodes
-4. Email Validation & Processing - Validates emails, selects best contacts, updates Google Sheets
+3. Email Validation & Processing - Validates emails, selects best contacts, updates Google Sheets
 
 Features:
 - Multi-platform support (Houzz and Architizer)
@@ -25,7 +24,6 @@ from loguru import logger
 from .houzz_scraper import HouzzScraper
 from .website_scraper import PersonalEmailExtractor
 from .models import ProfessionalProfile
-from .google_searcher import GoogleSearcher
 from .database_manager import DatabaseManager
 from .zerobounce_verifier import ZeroBounceVerifier
 from .architizer_scraper import ArchitizerScraper
@@ -66,12 +64,11 @@ class LeadEnrichmentPipeline:
         
     async def run_full_pipeline(self, location: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz", row_number: int = None) -> str:
         """
-        Run the complete 4-phase lead generation pipeline.
+        Run the complete 3-phase lead generation pipeline.
         
         Phase 1: Platform Profile Scraping - Extract professional profiles
         Phase 2: Website Email Mining - Extract emails, phones, and social links from websites
-        Phase 3: Google Search Enrichment - Find Gmail addresses, social profiles, and zipcodes
-        Phase 4: Email Validation & Processing - Validate emails, select best contacts, update Google Sheets
+        Phase 3: Email Validation & Processing - Validate emails, select best contacts, update Google Sheets
         
         Args:
             location: Geographic location to scrape (e.g., 'usa', 'california')
@@ -85,7 +82,7 @@ class LeadEnrichmentPipeline:
             Dictionary with pipeline statistics and results
         """
         start_time = datetime.now()
-        logger.info(f"🚀 Starting complete 4-phase {platform.upper()} lead generation pipeline for location '{location}' - {professional_type}")
+        logger.info(f"🚀 Starting complete 3-phase {platform.upper()} lead generation pipeline for location '{location}' - {professional_type}")
         
         # Step 1: Scrape profiles for single location and profession
         if platform == "houzz":
@@ -113,34 +110,17 @@ class LeadEnrichmentPipeline:
             logger.error(f"❌ Phase 2 Failed: Website scraping phase encountered error: {e}")
             logger.info("⚠️  Continuing with remaining phases...")
         
-        # Step 3: Google search enrichment phase (find Gmail addresses, social profiles, zipcodes)
-        logger.info("🔍 PHASE 3: Google Search Enrichment - Finding Gmail addresses, social profiles (LinkedIn, Facebook, Instagram, Twitter, Pinterest, YouTube), and zipcodes")
-        try:
-            await self.perform_google_search_enrichment(platform=platform)
-            logger.info("✅ Phase 3 Complete: Google search enrichment finished successfully")
-        except Exception as e:
-            logger.error(f"❌ Phase 3 Failed: Google search enrichment encountered error: {e}")
-            logger.info("⚠️  Continuing with remaining phases...")
-        
-        # Step 4: Email validation and processing with Google Sheets update
-        logger.info("✅ PHASE 4: Email Validation & Processing - Validating emails with ZeroBounce, selecting best contacts (max 2, min 1, prioritizing personal emails), and updating Google Sheets")
+        # Step 3: Email validation and processing with Google Sheets update
+        logger.info("✅ PHASE 3: Email Validation & Processing - Validating emails with ZeroBounce, selecting best contacts (max 2, min 1, prioritizing personal emails), and updating Google Sheets")
         try:
             stats = await self.validate_and_process_emails(platform=platform, start_time=start_time)
-            logger.info(f"✅ Phase 4 Complete: Email validation and processing finished successfully")
-            
-            # Step 5: Update Google Sheets with results (if enabled and successful)
-            # COMMENTED OUT: Skipping Google Sheets update
-            # if stats and not stats.get('error'):
-            #     logger.info("📊 Updating Google Sheets with pipeline results...")
-            #     await self._update_google_sheets(stats, row_number=row_number)
-            #     await self._update_profiles_sheet(stats)
-            #     logger.info("✅ Google Sheets updated successfully")
-            
-            logger.info(f"🎉 PIPELINE COMPLETE: All 4 phases finished successfully!")
+            logger.info(f"✅ Phase 3 Complete: Email validation and processing finished successfully")
+
+            logger.info(f"🎉 PIPELINE COMPLETE: All 3 phases finished successfully!")
             return stats
             
         except Exception as e:
-            logger.error(f"❌ Phase 4 Failed: Email validation phase encountered error: {e}")
+            logger.error(f"❌ Phase 3 Failed: Email validation phase encountered error: {e}")
             stats = {
                 "total_profiles_processed": 0,
                 "profiles_marked_completed": 0,
@@ -257,7 +237,7 @@ class LeadEnrichmentPipeline:
 
     async def validate_and_process_emails(self, platform: str = "houzz", start_time: datetime = None) -> Dict[str, Any]:
         """
-        Phase 4: Email Validation & Processing
+        Phase 3: Email Validation & Processing
         
         This phase performs:
         1. Email validation using ZeroBounce API (checks deliverability)
@@ -742,187 +722,6 @@ class LeadEnrichmentPipeline:
             logger.error(f"Error merging emails: {e}")
             # Return new emails if merging fails
             return new_emails
-
-    async def perform_google_search_enrichment(self, platform: str = "houzz", batch_size=25):
-        """
-        Phase 3: Google Custom Search Enrichment
-        
-        This phase performs:
-        1. Gmail address discovery using optimized multi-query search strategies
-        2. Social profile discovery across 7+ platforms (LinkedIn, Facebook, Instagram, Twitter/X, Pinterest, YouTube, etc.)
-        3. Zipcode and location data enrichment
-        4. Advanced relevance scoring and filtering
-        5. Smart deduplication and merging with existing data
-        6. Batch processing with pagination for efficient API usage
-        
-        Features:
-        - Multiple query variations (4-5 per search type) for 400-500% better coverage
-        - Platform-specific targeting with tailored queries
-        - Intelligent caching to save API quota
-        - Rate limiting and quota management (100 requests/day free tier)
-        
-        Args:
-            platform: Platform to process ('houzz' or 'architizer')
-            batch_size: Number of profiles to process per batch
-        """
-        logger.info("🔍 Starting Google Custom Search enrichment with optimized multi-query strategies...")
-        db_manager = None
-        
-        try:
-            db_manager = DatabaseManager()
-            google_searcher = GoogleSearcher()
-            
-            # Test Google API connection first
-            if not google_searcher.test_api_connection():
-                # Check if it's due to quota limits
-                cache_stats = google_searcher.get_cache_stats()
-                if cache_stats.get('quota_exceeded'):
-                    logger.warning("Google Custom Search API quota exceeded, skipping Google search enrichment")
-                    logger.info("Continuing with pipeline - other phases will still run")
-                else:
-                    logger.warning("Google Custom Search API not available, skipping Google search enrichment")
-                    logger.info("Continuing with pipeline - other phases will still run")
-                return
-            
-            total_processed = 0
-            total_with_gmail = 0
-            total_with_linkedin = 0
-            total_with_zipcode = 0
-            offset = 0
-            
-            while True:
-                # Get profiles in batches
-                profiles_to_search = db_manager.get_profiles_for_google_search(platform=platform, limit=batch_size, offset=offset)
-                
-                if not profiles_to_search:
-                    logger.info("No more profiles found that need Google search enrichment")
-                    break
-                
-                logger.info(f"Found {len(profiles_to_search)} profiles in this batch for Google search enrichment")
-                
-                # Log current quota status
-                cache_stats = google_searcher.get_cache_stats()
-                logger.info(f"Google API status: {cache_stats['request_count']}/{google_searcher.max_requests_per_day} requests used, quota exceeded: {cache_stats['quota_exceeded']}")
-                
-                for profile_id, name, professional_type, existing_email, website, linkedin_links_json, facebook_links_json, instagram_links_json, twitter_links_json, pinterest_links_json, youtube_links_json, other_social_links_json, zipcode, address in profiles_to_search:
-                    total_processed += 1
-                    
-                    # Parse social links from separate columns
-                    social_links = {}
-                    for platform, links_json in [
-                        ('linkedin', linkedin_links_json),
-                        ('facebook', facebook_links_json),
-                        ('instagram', instagram_links_json),
-                        ('twitter', twitter_links_json),
-                        ('pinterest', pinterest_links_json),
-                        ('youtube', youtube_links_json),
-                        ('other', other_social_links_json)
-                    ]:
-                        if links_json:
-                            try:
-                                links = json.loads(links_json) if isinstance(links_json, str) else links_json
-                                if links:
-                                    social_links[platform] = links
-                            except (json.JSONDecodeError, TypeError):
-                                logger.debug(f"Could not parse {platform} links for {name}: {links_json}")
-                    
-                    # Parse existing emails JSON
-                    existing_emails_data = {'personal': [], 'business': []}
-                    if existing_email:
-                        try:
-                            existing_emails_data = json.loads(existing_email) if isinstance(existing_email, str) else existing_email
-                        except (json.JSONDecodeError, TypeError):
-                            logger.debug(f"Could not parse existing emails for {name}: {existing_email}")
-                            existing_emails_data = {'personal': [], 'business': []}
-                    
-                    logger.info(f"Processing Google search for {name} ({professional_type})")
-                    
-                    try:
-                        # Perform Google search with social_links, address, and zipcode
-                        search_results = google_searcher.search_professional_info(
-                            name, professional_type, website=website, social_links=social_links, 
-                            address=address, zipcode=zipcode
-                        )
-                        
-                        personal_emails = search_results.get('personal_emails', [])
-                        social_profiles = search_results.get('social_profiles', {})
-                        found_zipcode = search_results.get('zipcode')
-                        
-                        # Update database with found information
-                        updates_made = False
-                        
-                        # Merge new personal emails with existing ones (avoid duplicates)
-                        if personal_emails:
-                            new_emails_data = {"personal": personal_emails, "business": []}
-                            merged_emails = self._merge_emails_without_duplicates(existing_emails_data, new_emails_data)
-                            
-                            # Check if any new emails were added
-                            original_personal_count = len(existing_emails_data.get('personal', []))
-                            new_personal_count = len(merged_emails.get('personal', []))
-                            
-                            if new_personal_count > original_personal_count:
-                                db_manager.update_profile_emails_json(profile_id, merged_emails)
-                                new_emails = merged_emails['personal'][original_personal_count:]
-                                logger.info(f"✓ Updated {name} with new personal emails: {new_emails}")
-                                total_with_gmail += 1
-                                updates_made = True
-                            else:
-                                logger.info(f"No new personal emails found for {name} (all already exist)")
-                        
-                        # Process social media profiles
-                        if social_profiles:
-                            # Map platform names to database column names
-                            platform_mapping = {
-                                'linkedin': 'linkedin_links',
-                                'facebook': 'facebook_links',
-                                'instagram': 'instagram_links', 
-                                'twitter': 'twitter_links',
-                                'x': 'twitter_links',  # X.com goes to twitter_links
-                                'pinterest': 'pinterest_links',
-                                'youtube': 'youtube_links',
-                            }
-                            for platform, profiles in social_profiles.items():
-                                if profiles and platform in platform_mapping:
-                                    platform_urls = [profile['url'] for profile in profiles]
-                                    column_name = platform_mapping[platform]
-                                    db_manager.update_profile_field(profile_id, column_name, platform_urls)
-                                    logger.info(f"✓ Updated {name} with {platform}: {platform_urls}")
-                                    if platform == 'linkedin':
-                                        total_with_linkedin += 1
-                                    updates_made = True
-                        # Update zipcode if found and not already available
-                        if found_zipcode and not zipcode:
-                            db_manager.update_profile_zipcode(profile_id, found_zipcode)
-                            logger.info(f"✓ Updated {name} with zipcode: {found_zipcode}")
-                            total_with_zipcode += 1
-                            updates_made = True
-                        
-                        if not updates_made:
-                            logger.info(f"✗ No new information found for {name}")
-                        
-                        # Mark as searched if processing completed (even if no new information found)
-                        # Only don't mark if there was an error during processing
-                        db_manager.mark_google_search_done_by_id(profile_id)
-                        logger.info(f"✅ Marked {profile_id} as Google search done (processing completed)")
-                        
-                        # Rate limiting for Google API (100 searches per day for free tier)
-                        await asyncio.sleep(2)  # 2 second delay between searches
-                        
-                    except Exception as e:
-                        logger.error(f"Error searching for {name}: {e}")
-                        # Don't mark as attempted if there was an error
-                        logger.warning(f"❌ Not marking {profile_id} as Google search done due to error")
-                        continue
-                
-                # Move to next batch
-                offset += batch_size
-                logger.info(f"=== BATCH COMPLETED === Total processed: {total_processed}, Gmail found: {total_with_gmail}, LinkedIn found: {total_with_linkedin}, Zipcode found: {total_with_zipcode}")
-        
-        except Exception as e:
-            logger.error(f"Error in perform_google_search_enrichment: {e}")
-        finally:
-            if db_manager:
-                db_manager.close()
 
     async def scrape_architizer_profiles(self, location: str, max_pages: Optional[int] = None, start_page: int = 1) -> List[ProfessionalProfile]:
         profiles = []

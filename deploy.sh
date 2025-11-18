@@ -127,7 +127,7 @@ if [ ! -f ".env" ]; then
         echo "   nano .env"
     else
         echo "⚠️  .env.example not found. Please create .env file manually with required API keys"
-        echo "   Required variables: ZEROBOUNCE_API_KEY, GOOGLE_SEARCH_API_KEY, GOOGLE_SEARCH_CX"
+        echo "   Required variables: ZEROBOUNCE_API_KEY"
     fi
 else
     echo "✅ .env file already exists"
@@ -184,13 +184,11 @@ echo "⚠️  IMPORTANT: Always activate the virtual environment before running 
 echo "   source venv/bin/activate"
 echo ""
 echo "Next steps for hourly scraping:"
-echo "1. Edit .env file with your API keys (ZeroBounce + Google Custom Search + Proxy settings)"
+echo "1. Edit .env file with your API keys (ZeroBounce + Proxy settings)"
 echo "2. Deploy to Cloud Run: gcloud builds submit --config cloudbuild.yaml"
 echo "3. Set all environment variables:"
 echo "   gcloud run services update houzz-scraper --region=us-central1 \\"
 echo "     --set-env-vars ZEROBOUNCE_API_KEY=your_key \\"
-echo "     --set-env-vars GOOGLE_SEARCH_API_KEY=your_key \\"
-echo "     --set-env-vars GOOGLE_SEARCH_CX=your_cx \\"
 echo "     --set-env-vars PROXY_USERNAME=your_proxy_user \\"
 echo "     --set-env-vars PROXY_PASSWORD=your_proxy_pass"
 echo "4. Test: curl -X POST https://your-service-url/scrape -H 'Content-Type: application/json' -d '{\"platform\":\"houzz\",\"location\":\"usa\",\"professional_type\":\"interior-designer\",\"max_pages\":2}'"

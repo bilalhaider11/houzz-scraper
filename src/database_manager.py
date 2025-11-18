@@ -238,10 +238,6 @@ class DatabaseManager:
         """Mark a profile's website as scraped by ID"""
         self.update_profile_field(profile_id, 'website_scraped', 1)
     
-    def mark_google_search_done_by_id(self, profile_id: int):
-        """Mark a profile's Google search as done by ID"""
-        self.update_profile_field(profile_id, 'google_search_done', 1)
-    
     def mark_profile_completed(self, profile_id: int):
         """Mark a profile as completed after export"""
         self.update_profile_field(profile_id, 'is_completed', 1)
@@ -314,26 +310,6 @@ class DatabaseManager:
         """Update zipcode for a profile"""
         self.update_profile_field(profile_id, 'zip_code', zipcode)
     
-    def get_profiles_for_google_search(self, platform: str, limit: int = 100, offset: int = 0) -> List[tuple]:
-        """Get profiles that haven't had Google search done yet with pagination support"""
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT id, name, professional_type, emails, website, 
-                           linkedin_links, facebook_links, instagram_links, twitter_links,
-                           pinterest_links, youtube_links, other_social_links,
-                           zip_code, address 
-                    FROM professionals 
-                    WHERE (google_search_done IS NULL OR google_search_done = 0)
-                    AND platform = ?
-                    ORDER BY id
-                    LIMIT ? OFFSET ?
-                """, (platform, limit, offset))
-                return cursor.fetchall()
-        except sqlite3.Error as e:
-            logger.error(f"Failed to get profiles for Google search: {e}")
-            return []
-
     def get_all_profiles_for_export(self, platform: str, limit: int = 1000, offset: int = 0) -> List[dict]:
         """Get all profile data for export with pagination support"""
         try:
@@ -410,10 +386,8 @@ class DatabaseManager:
                     SELECT 
                         COUNT(*) as total_profiles,
                         SUM(website_scraped) as websites_scraped,
-                        SUM(google_search_done) as google_searches_done,
                         SUM(is_completed) as completed_profiles,
                         COUNT(*) - SUM(website_scraped) as websites_pending,
-                        COUNT(*) - SUM(google_search_done) as google_searches_pending,
                         COUNT(*) - SUM(is_completed) as profiles_pending_completion
                     FROM professionals
                     WHERE platform = ?
@@ -423,11 +397,9 @@ class DatabaseManager:
                     return {
                         'total_profiles': row[0],
                         'websites_scraped': row[1],
-                        'google_searches_done': row[2],
-                        'completed_profiles': row[3],
-                        'websites_pending': row[4],
-                        'google_searches_pending': row[5],
-                        'profiles_pending_completion': row[6]
+                        'completed_profiles': row[2],
+                        'websites_pending': row[3],
+                        'profiles_pending_completion': row[4]
                     }
         except sqlite3.Error as e:
             logger.error(f"Failed to get scraping stats: {e}")

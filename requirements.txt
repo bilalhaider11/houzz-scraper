@@ -39,15 +39,9 @@ email-validator==2.1.0.post1
 dnspython==2.5.0
 
 # =====================================================
-# SEARCH & ENRICHMENT APIs
-# =====================================================
-google-api-python-client==2.116.0
-google-auth-httplib2==0.2.0
-google-auth-oauthlib==1.2.0
-
-# =====================================================
 # GOOGLE SHEETS INTEGRATION
 # =====================================================
+google-api-python-client==2.116.0
 google-auth==2.25.2
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
@@ -93,7 +87,6 @@ uvicorn[standard]==0.24.0
 #
 # API Dependencies:
 # - ZeroBounce API: For email verification (optional but recommended)
-# - Google Custom Search API: For Gmail/LinkedIn enrichment (optional)
 #
 # FastAPI Usage:
 # - Run API server: uvicorn main:app --host 0.0.0.0 --port 8000

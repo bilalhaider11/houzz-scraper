@@ -19,8 +19,6 @@ sudo apt-get install google-cloud-cli
 
 You need these API keys ready:
 - **ZeroBounce API Key** - Get from https://www.zerobounce.net/
-- **Google Search API Key** - Get from https://console.cloud.google.com/
-- **Google Search CX** - Create at https://programmablesearchengine.google.com/
 - **Google Sheets Service Account** - Create at https://console.cloud.google.com/iam-admin/serviceaccounts
 - **Proxy Credentials** (optional but recommended)
 
@@ -56,8 +54,6 @@ nano .env
 
 **Important**: Replace ALL placeholder values:
 - Replace `your_zerobounce_api_key_here` with your actual ZeroBounce key
-- Replace `your_google_api_key_here` with your actual Google Search API key
-- Replace `your_google_custom_search_engine_id_here` with your actual CX
 - Replace `your-service-account@your-project.iam.gserviceaccount.com` with your service account email
 - Replace `-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----\n` with your actual private key
 - And so on for all other values

@@ -17,10 +17,6 @@ class Config:
     # Email Verification API
     ZEROBOUNCE_API_KEY: Optional[str] = os.getenv('ZEROBOUNCE_API_KEY')
     
-    # Google Custom Search API
-    GOOGLE_SEARCH_API_KEY: Optional[str] = os.getenv('GOOGLE_SEARCH_API_KEY')
-    GOOGLE_SEARCH_CX: Optional[str] = os.getenv('GOOGLE_SEARCH_CX')
-    
     # Proxy Configuration (optional)
     PROXY_USERNAME: Optional[str] = os.getenv('PROXY_USERNAME')
     PROXY_PASSWORD: Optional[str] = os.getenv('PROXY_PASSWORD')

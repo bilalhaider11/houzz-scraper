@@ -128,8 +128,6 @@ case $CHOICE in
         
         # Required variables
         read -p "ZeroBounce API Key: " ZEROBOUNCE_API_KEY
-        read -p "Google Search API Key: " GOOGLE_SEARCH_API_KEY
-        read -p "Google Search CX: " GOOGLE_SEARCH_CX
         read -p "Google Sheets Spreadsheet ID: " GOOGLE_SHEETS_SPREADSHEET_ID
         read -p "Google Sheets Worksheet Name [Sheet1]: " GOOGLE_SHEETS_WORKSHEET_NAME
         GOOGLE_SHEETS_WORKSHEET_NAME=${GOOGLE_SHEETS_WORKSHEET_NAME:-Sheet1}
@@ -154,8 +152,6 @@ case $CHOICE in
         CMD="gcloud run services update $SERVICE_NAME --region $REGION"
         
         [ -n "$ZEROBOUNCE_API_KEY" ] && CMD="$CMD --update-env-vars ZEROBOUNCE_API_KEY=$ZEROBOUNCE_API_KEY"
-        [ -n "$GOOGLE_SEARCH_API_KEY" ] && CMD="$CMD --update-env-vars GOOGLE_SEARCH_API_KEY=$GOOGLE_SEARCH_API_KEY"
-        [ -n "$GOOGLE_SEARCH_CX" ] && CMD="$CMD --update-env-vars GOOGLE_SEARCH_CX=$GOOGLE_SEARCH_CX"
         [ -n "$GOOGLE_SHEETS_SPREADSHEET_ID" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_SPREADSHEET_ID=$GOOGLE_SHEETS_SPREADSHEET_ID"
         [ -n "$GOOGLE_SHEETS_WORKSHEET_NAME" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_WORKSHEET_NAME=$GOOGLE_SHEETS_WORKSHEET_NAME"
         [ -n "$GOOGLE_SHEETS_CLIENT_EMAIL" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_CLIENT_EMAIL=$GOOGLE_SHEETS_CLIENT_EMAIL"
@@ -195,14 +191,6 @@ case $CHOICE in
             echo "✓ ZeroBounce secret created"
         fi
         
-        read -sp "Google Search API Key: " GOOGLE_SEARCH_KEY
-        echo ""
-        if [ -n "$GOOGLE_SEARCH_KEY" ]; then
-            echo -n "$GOOGLE_SEARCH_KEY" | gcloud secrets create google-search-api-key --data-file=- --replication-policy=automatic || \
-                echo -n "$GOOGLE_SEARCH_KEY" | gcloud secrets versions add google-search-api-key --data-file=-
-            echo "✓ Google Search secret created"
-        fi
-        
         # Get project number for service account
         PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
         SERVICE_ACCOUNT="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
@@ -214,16 +202,12 @@ case $CHOICE in
             --member="serviceAccount:$SERVICE_ACCOUNT" \
             --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
         
-        gcloud secrets add-iam-policy-binding google-search-api-key \
-            --member="serviceAccount:$SERVICE_ACCOUNT" \
-            --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
-        
         # Update Cloud Run to use secrets
         echo ""
         echo "Updating Cloud Run service to use secrets..."
         gcloud run services update $SERVICE_NAME \
             --region $REGION \
-            --update-secrets "ZEROBOUNCE_API_KEY=zerobounce-api-key:latest,GOOGLE_SEARCH_API_KEY=google-search-api-key:latest"
+            --update-secrets "ZEROBOUNCE_API_KEY=zerobounce-api-key:latest"
         
         echo ""
         echo -e "${GREEN}✅ Secrets configured successfully!${NC}"

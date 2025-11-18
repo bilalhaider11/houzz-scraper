@@ -4,13 +4,12 @@ FastAPI Application for Houzz Lead Generation Pipeline v2.0
 ===========================================================
 
 A production-ready FastAPI application for multi-platform lead generation with
-a complete 4-phase enrichment pipeline.
+a complete 3-phase enrichment pipeline.
 
-4-Phase Pipeline:
+3-Phase Pipeline:
 1. Platform Profile Scraping (Houzz/Architizer) - Extract professional profiles
 2. Website Email Mining (Playwright) - Extract emails, phones, and social links
-3. Google Search Enrichment - Find Gmail addresses, social profiles, and zipcodes
-4. Email Validation & Processing - Validate emails, select best contacts, update Google Sheets
+3. Email Validation & Processing - Validate emails, select best contacts, update Google Sheets
 
 Features:
 - Multi-platform support (Houzz and Architizer)
@@ -123,10 +122,8 @@ class StatsResponse(BaseModel):
                 "stats": {
                     "total_profiles": 1250,
                     "websites_scraped": 890,
-                    "google_searches_done": 450,
                     "completed_profiles": 1200,
                     "websites_pending": 50,
-                    "google_searches_pending": 25,
                     "profiles_pending_completion": 30
                 }
             }
@@ -197,22 +194,20 @@ class ErrorResponse(BaseModel):
 app = FastAPI(
     title="Houzz Lead Generation Pipeline API",
     description="""
-    ## Production-ready API for Multi-Platform Lead Generation with 4-Phase Pipeline
+    ## Production-ready API for Multi-Platform Lead Generation with 3-Phase Pipeline
     
     This API provides comprehensive lead generation and enrichment with automated Google Sheets tracking:
     
-    ### 4-Phase Pipeline:
+    ### 3-Phase Pipeline:
     * **Phase 1 - Platform Scraping**: Extract professional profiles from Houzz and Architizer
     * **Phase 2 - Website Mining**: Extract emails, phones, and social links using Playwright automation
-    * **Phase 3 - Google Enrichment**: Find Gmail addresses, social profiles, and zipcodes
-    * **Phase 4 - Validation & Processing**: Validate emails, select best contacts, update Google Sheets
+    * **Phase 3 - Validation & Processing**: Validate emails, select best contacts, update Google Sheets
     
     ### Key Features:
     - 🏠 **Multi-Platform Support**: Houzz and Architizer scraping
     - 🎯 **Professional Types**: Interior designers, architects, contractors, and more
     - 🌍 **Geographic Coverage**: USA-wide and state-specific scraping
     - 📧 **Email Verification**: ZeroBounce integration with smart selection (max 2, min 1)
-    - 🔍 **Data Enrichment**: Google Custom Search with 400-500% better coverage
     - 📊 **Google Sheets Integration**: Automated results tracking and profile management
     - 📈 **Statistics**: Real-time scraping progress and metrics
     - 🔄 **Proxy Rotation**: Built-in proxy support for large-scale scraping
@@ -281,15 +276,6 @@ def validate_environment() -> bool:
     if not hasattr(sys, 'real_prefix') and not (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
         warnings.append("Virtual environment not detected")
     
-    # Check API keys with detailed feedback
-    api_checks = [
-        (config.GOOGLE_SEARCH_API_KEY, "GOOGLE_SEARCH_API_KEY", "Google search enrichment will be limited"),
-        (config.GOOGLE_SEARCH_CX, "GOOGLE_SEARCH_CX", "Google search enrichment will be limited")
-    ]
-    
-    for api_key, key_name, warning_msg in api_checks:
-        if not api_key:
-            warnings.append(f"{key_name} not set - {warning_msg}")
     
     # Check and create directories with proper permissions
     directories = [
@@ -721,7 +707,6 @@ async def get_stats(platform: Optional[str] = None):
     **Returns:**
     - Total profiles scraped
     - Websites scraped and pending
-    - Google searches completed and pending
     - Completed profiles count
     - Profiles pending completion
     """
@@ -748,10 +733,8 @@ async def get_stats(platform: Optional[str] = None):
                 'total': {
                     'total_profiles': (houzz_stats.get('total_profiles', 0) or 0) + (architizer_stats.get('total_profiles', 0) or 0),
                     'websites_scraped': (houzz_stats.get('websites_scraped', 0) or 0) + (architizer_stats.get('websites_scraped', 0) or 0),
-                    'google_searches_done': (houzz_stats.get('google_searches_done', 0) or 0) + (architizer_stats.get('google_searches_done', 0) or 0),
                     'completed_profiles': (houzz_stats.get('completed_profiles', 0) or 0) + (architizer_stats.get('completed_profiles', 0) or 0),
                     'websites_pending': (houzz_stats.get('websites_pending', 0) or 0) + (architizer_stats.get('websites_pending', 0) or 0),
-                    'google_searches_pending': (houzz_stats.get('google_searches_pending', 0) or 0) + (architizer_stats.get('google_searches_pending', 0) or 0),
                     'profiles_pending_completion': (houzz_stats.get('profiles_pending_completion', 0) or 0) + (architizer_stats.get('profiles_pending_completion', 0) or 0)
                 }
             }
@@ -772,21 +755,20 @@ async def get_stats(platform: Optional[str] = None):
     "/scrape", 
     response_model=ScrapeResponse,
     tags=["Scraping"],
-    summary="Start Complete 4-Phase Pipeline",
-    description="Execute the complete lead generation pipeline with all 4 phases: Platform Scraping → Website Mining → Google Enrichment → Validation & Processing",
+    summary="Start Complete 3-Phase Pipeline",
+    description="Execute the complete lead generation pipeline with all 3 phases: Platform Scraping → Website Mining → Validation & Processing",
     status_code=status.HTTP_200_OK
 )
 async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
     """
-    ## Start Complete 4-Phase Lead Generation Pipeline
+    ## Start Complete 3-Phase Lead Generation Pipeline
     
     Executes the complete lead generation and enrichment pipeline with Google Sheets integration.
     
-    **4-Phase Process:**
+    **3-Phase Process:**
     1. **Platform Profile Scraping** - Extracts professional profiles from Houzz or Architizer
     2. **Website Email Mining** - Extracts emails, phones, and social links using Playwright
-    3. **Google Search Enrichment** - Finds Gmail addresses, social profiles, and zipcodes
-    4. **Email Validation & Processing** - Validates emails, selects best contacts, updates Google Sheets
+    3. **Email Validation & Processing** - Validates emails, selects best contacts, updates Google Sheets
     
     **Validation & Quality Control:**
     - Validates the request parameters (location, profession, platform)
@@ -879,11 +861,11 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                 detail=f"Failed to initialize pipeline: {str(e)}"
             )
         
-        # Run the complete 4-phase pipeline
+        # Run the complete 3-phase pipeline
         if request.platform == "houzz":
-            logger.info(f"🚀 Starting complete 4-phase {request.platform.upper()} pipeline for location '{request.location}' - {request.professional_type}")
+            logger.info(f"🚀 Starting complete 3-phase {request.platform.upper()} pipeline for location '{request.location}' - {request.professional_type}")
         else:
-            logger.info(f"🚀 Starting complete 4-phase {request.platform.upper()} pipeline")
+            logger.info(f"🚀 Starting complete 3-phase {request.platform.upper()} pipeline")
         
         # Execute the full pipeline
         response = await pipeline.run_full_pipeline(
