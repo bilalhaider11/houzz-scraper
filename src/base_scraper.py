@@ -207,7 +207,8 @@ class BaseScraper:
         essential_patterns = [
             r'https://www\.houzz\.com/professionals/.*?/.*?-.*?probr0-bo~.*?',  # Search pages
             r'https://www\.houzz\.com/professionals/hznb/.*?/.*?-.*?probr0-bo~.*?',
-            r'https://www\.houzz\.com/professionals/.*?/.*?-pfvwus-pf~.*?'      # Profile pages
+            r'https://www\.houzz\.com/professionals/.*?/.*?-pfvwus-pf~.*?',      # Profile pages
+            r'https://www\.houzz\.com/professionals/hznb/.*?/.*?-pfvw[A-Za-z]{2}-pf~.*?'
         ]
         
         import re

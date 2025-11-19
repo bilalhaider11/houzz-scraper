@@ -820,7 +820,7 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
             if location_lower in ['united states', 'usa', 'us']:
                 request.location = 'usa'
                 
-            elif location_lower in ['united-kingdom-of-great-britain-and-northern-ireland','united-kingdom','uk','UK','United-Kingdom']:
+            elif location_lower in ['united-kingdom','uk']:
                 request.location = 'united-kingdom-of-great-britain-and-northern-ireland'
             
             # Validate location exists in LOCATION_REGION_MAP

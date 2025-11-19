@@ -81,14 +81,10 @@ class HouzzScraper(BaseScraper):
             # Get region_id from location mapping using dictionary access
             region_id = config.LOCATION_REGION_MAP[location]
             
+            prefix = "" if location == "usa" else "hznb/"
             
-            if location == 'usa':
-                base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
-                logger.info(f"Scraping {professional_type} for location '{location}' (region: {region_id}): {base_url}")#hznb
-            else:    
-                base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/hznb/{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
-                logger.info(f"Scraping {professional_type} for location '{location}' (region: {region_id}): {base_url}")
-                
+            base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{prefix}{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
+            
             pages_scraped = 0
             max_pages_to_scrape = max_pages if max_pages is not None else 100
             
@@ -132,9 +128,7 @@ class HouzzScraper(BaseScraper):
 
             # Log summary
             logger.info(f"📊 Completed scraping location '{location}' for {professional_type}: scraped {pages_scraped} pages successfully")
-        except Exception as e:
-            
-            logger.error("sdklfjslhfsgfkfdgiewurrewfugfhsiivdsvfdsigushfidshgsiugsiughsghsghsgsgsgsgs")   
+             
         finally:
             if page:
                 await page.close()
