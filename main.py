@@ -426,9 +426,7 @@ async def get_proxy_status():
             'webshare_proxy_list_configured': bool(config.WEBSHARE_PROXY_LIST)
         }
         
-        if config.USE_PROXY_ROTATION and scraper.proxy_list:
-            proxy_stats.update(scraper.get_proxy_stats())
-        else:
+        if not config.USE_PROXY_ROTATION and not scraper.proxy_list:
             proxy_stats.update({
                 'message': 'Proxy rotation is disabled or no proxies configured',
                 'total_proxies': 0
