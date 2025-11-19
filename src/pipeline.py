@@ -750,7 +750,7 @@ class LeadEnrichmentPipeline:
                 except Exception as e:
                     logger.error(f"Error closing database connection: {e}")
 
-    async def scrape_houzz_profiles(self, location: str, professional_type: str, max_pages: int = 50, start_page: int = 1) -> List[ProfessionalProfile]:
+    async def   scrape_houzz_profiles(self, location: str, professional_type: str, max_pages: int = 50, start_page: int = 1) -> List[ProfessionalProfile]:
         """Scrape Houzz profiles for a single location and profession"""
         profiles = []
         db_manager = None
@@ -767,9 +767,9 @@ class LeadEnrichmentPipeline:
                 logger.info(f"  Max pages: {max_pages}")
                 logger.info(f"  Starting page: {start_page}")
                 
-                # Scrape using the location-based method
+                # Scrape using the location-based   method
                 logger.info(f"\n🔍 Starting scrape for {professional_type} at location '{location}'")
-                
+                    
                 # Use the new location-based scraping method
                 location_profiles = await scraper.get_professionals_by_location(
                     location=location,

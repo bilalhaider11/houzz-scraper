@@ -368,7 +368,6 @@ class ArchitizerScraper(BaseScraper):
                 logger.info("⚠️ No new URLs found on current page - this might indicate we've reached the end of available content")
                 logger.info(f"📊 Current stats: pages_scraped={pages_scraped}, pages_to_scrape={pages_to_scrape}, current_page={current_page}")
                 break
-            print('new_urls', new_urls)
             # Scrape firms from current page
             for url in new_urls:
                 try:

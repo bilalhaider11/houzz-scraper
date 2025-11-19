@@ -426,9 +426,7 @@ async def get_proxy_status():
             'webshare_proxy_list_configured': bool(config.WEBSHARE_PROXY_LIST)
         }
         
-        if config.USE_PROXY_ROTATION and scraper.proxy_list:
-            proxy_stats.update(scraper.get_proxy_stats())
-        else:
+        if not config.USE_PROXY_ROTATION and not scraper.proxy_list:
             proxy_stats.update({
                 'message': 'Proxy rotation is disabled or no proxies configured',
                 'total_proxies': 0
@@ -814,10 +812,15 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
                 )
 
             # Normalize location input (handle USA variations)
-            location_lower = request.location.lower().strip()
+            location_lower = request.location.lower().strip() 
+         
             # Normalize United States and USA variations to 'usa'
             if location_lower in ['united states', 'usa', 'us']:
                 request.location = 'usa'
+                
+            elif location_lower in ['united-kingdom','uk']:
+                request.location = 'united-kingdom-of-great-britain-and-northern-ireland'
+            
             # Validate location exists in LOCATION_REGION_MAP
             if request.location not in config.LOCATION_REGION_MAP:
                 available_locations = list(config.LOCATION_REGION_MAP.keys())
