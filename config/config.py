@@ -75,7 +75,7 @@ class Config:
         'australia':'r_2077456'# Add more locations as needed
     })
     
-    USER_BASE_ID_MAPPING: dict = field(default_factory=lambda:{
+    GET_USERID_BY_LOCATIONCODE_MAPPING: dict = field(default_factory=lambda:{
         'usa':'us',
         'united-kingdom-of-great-britain-and-northern-ireland':'gb',
         'australia':'au',
