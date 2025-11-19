@@ -72,14 +72,16 @@ class Config:
         'usa': 'r_6252001',                    # United States (nationwide
         'france':'r_3017382',
         'united-kingdom-of-great-britain-and-northern-ireland':'r_2635167',
-        'australia':'r_2077456'# Add more locations as needed
+        'australia':'r_2077456',# Add more locations as needed
+        'canada':'r_6251999'
     })
     
     LOCATION_CODE_MAPPING: dict = field(default_factory=lambda:{
         'usa':'us',
         'united-kingdom-of-great-britain-and-northern-ireland':'gb',
         'australia':'au',
-        'france':'fr'
+        'france':'fr',
+        'canada':'us'
     })
     
     # State to major cities with region IDs
