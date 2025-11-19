@@ -276,7 +276,7 @@ class HouzzScraper(BaseScraper):
                     logger.debug(f"JSON decode error: {e}")
 
             # Get profile URL from the container
-            getCountrycode = config.GET_USERID_BY_LOCATIONCODE_MAPPING[location]
+            getCountrycode = config.LOCATION_CODE_MAPPING[location]
             selector = f'a[href*="pfvw{getCountrycode}-pf~"]'
             link_elem = container.select_one(selector)
             
