@@ -81,7 +81,7 @@ class HouzzScraper(BaseScraper):
             # Get region_id from location mapping using dictionary access
             region_id = config.LOCATION_REGION_MAP[location]
             
-            prefix = "" if location == "usa" or "canada" else "hznb/"
+            prefix = "" if (location == "usa" or location == "canada") else "hznb/"
             
             base_url = f"{config.HOUZZ_PROFESSIONALS_URL}/{prefix}{professional_type}/{location}-probr0-bo~{prof_param}~{region_id}"
             
