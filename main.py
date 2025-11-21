@@ -9,12 +9,11 @@ a complete 3-phase enrichment pipeline.
 3-Phase Pipeline:
 1. Platform Profile Scraping (Houzz/Architizer) - Extract professional profiles
 2. Website Email Mining (Playwright) - Extract emails, phones, and social links
-3. Email Validation & Processing - Validate emails, select best contacts, update Google Sheets
+3. Email Validation & Processing - Validate emails, select best contacts
 
 Features:
 - Multi-platform support (Houzz and Architizer)
 - ZeroBounce email verification with smart selection (max 2, min 1)
-- Google Sheets integration for automated results tracking
 - Intelligent email prioritization (personal > business)
 - Real-time statistics and monitoring endpoints
 
@@ -92,12 +91,6 @@ class ScrapeRequest(BaseModel):
         le=1000,
         example=1
     )
-    row_number: int = Field(
-        ..., 
-        description="Google Sheets row number to update with results (1-based)",
-        ge=1,
-        example=5
-    )
     
     class Config:
         schema_extra = {
@@ -106,8 +99,7 @@ class ScrapeRequest(BaseModel):
                 "location": "usa",
                 "professional_type": "interior-designer",
                 "max_pages": 50,
-                "start_page": 1,
-                "row_number": 5
+                "start_page": 1
             }
         }
 
@@ -130,7 +122,7 @@ class StatsResponse(BaseModel):
         }
 
 class ScrapeResponse(BaseModel):
-    """Response model for scraping operations with complete 4-phase pipeline results"""
+    """Response model for scraping operations with complete 3-phase pipeline results"""
     success: bool = Field(..., description="Whether the scraping operation was successful", example=True)
     message: str = Field(..., description="Human-readable status message", example="✅ Houzz pipeline completed successfully for chicago-il-us - interior-designer!")
     profiles_scraped: Optional[int] = Field(None, description="Number of profiles processed and validated", example=150)
@@ -196,25 +188,24 @@ app = FastAPI(
     description="""
     ## Production-ready API for Multi-Platform Lead Generation with 3-Phase Pipeline
     
-    This API provides comprehensive lead generation and enrichment with automated Google Sheets tracking:
+    This API provides comprehensive lead generation and enrichment:
     
     ### 3-Phase Pipeline:
     * **Phase 1 - Platform Scraping**: Extract professional profiles from Houzz and Architizer
     * **Phase 2 - Website Mining**: Extract emails, phones, and social links using Playwright automation
-    * **Phase 3 - Validation & Processing**: Validate emails, select best contacts, update Google Sheets
+    * **Phase 3 - Validation & Processing**: Validate emails, select best contacts
     
     ### Key Features:
     - 🏠 **Multi-Platform Support**: Houzz and Architizer scraping
     - 🎯 **Professional Types**: Interior designers, architects, contractors, and more
     - 🌍 **Geographic Coverage**: USA-wide and state-specific scraping
     - 📧 **Email Verification**: ZeroBounce integration with smart selection (max 2, min 1)
-    - 📊 **Google Sheets Integration**: Automated results tracking and profile management
     - 📈 **Statistics**: Real-time scraping progress and metrics
     - 🔄 **Proxy Rotation**: Built-in proxy support for large-scale scraping
     
     ### Getting Started:
     1. Use `/list-professional-types` to see available professions
-    2. Use `/scrape` to start the complete 4-phase pipeline
+    2. Use `/scrape` to start the complete 3-phase pipeline
     3. Monitor progress with `/stats`
     4. Check `/health` for API status
     """,
@@ -545,148 +536,6 @@ async def clear_database():
         )
 
 @app.get(
-    "/test-sheets-connection",
-    response_model=Dict[str, Any],
-    tags=["System"],
-    summary="Test Google Sheets Connection",
-    description="Verify that Google Sheets are successfully connected and accessible"
-)
-async def test_sheets_connection():
-    """
-    ## Test Google Sheets Connection
-    
-    Verifies that the Google Sheets integration is properly configured and accessible.
-    
-    **Returns:**
-    - Connection status (connected/not_connected)
-    - Spreadsheet information if connected
-    - Configuration status for tracking and profiles sheets
-    - Detailed error messages if connection fails
-    """
-    try:
-        from src.google_sheets_service import GoogleSheetsService
-        
-        # Initialize Google Sheets service
-        sheets_service = GoogleSheetsService()
-        
-        # Check if service is available
-        if not sheets_service.is_available():
-            return {
-                "status": "not_connected",
-                "message": "Google Sheets service is not available. Please check your configuration.",
-                "details": {
-                    "service_initialized": sheets_service.service is not None,
-                    "spreadsheet_id_configured": sheets_service.spreadsheet_id is not None,
-                    "tracking_spreadsheet_id": config.GOOGLE_SHEETS_SPREADSHEET_ID or "Not configured",
-                    "tracking_worksheet_name": config.GOOGLE_SHEETS_WORKSHEET_NAME or "Not configured",
-                    "profiles_spreadsheet_id": config.GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID or "Not configured",
-                    "profiles_worksheet_name": config.GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME or "Not configured",
-                }
-            }
-        
-        # Test the connection
-        connection_successful = sheets_service.test_connection()
-        
-        if connection_successful:
-            # Get spreadsheet metadata
-            try:
-                spreadsheet = sheets_service.service.spreadsheets().get(
-                    spreadsheetId=sheets_service.spreadsheet_id
-                ).execute()
-                
-                spreadsheet_title = spreadsheet.get('properties', {}).get('title', 'Unknown')
-                spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{sheets_service.spreadsheet_id}"
-                
-                # Get worksheet names
-                sheets_info = []
-                for sheet in spreadsheet.get('sheets', []):
-                    sheet_properties = sheet.get('properties', {})
-                    sheets_info.append({
-                        'name': sheet_properties.get('title', 'Unknown'),
-                        'id': sheet_properties.get('sheetId', 0),
-                        'rows': sheet_properties.get('gridProperties', {}).get('rowCount', 0),
-                        'columns': sheet_properties.get('gridProperties', {}).get('columnCount', 0)
-                    })
-                
-                return {
-                    "status": "connected",
-                    "message": "✅ Google Sheets connection successful!",
-                    "tracking_sheet": {
-                        "spreadsheet_id": sheets_service.spreadsheet_id,
-                        "spreadsheet_title": spreadsheet_title,
-                        "spreadsheet_url": spreadsheet_url,
-                        "worksheet_name": sheets_service.worksheet_name,
-                        "total_worksheets": len(sheets_info),
-                        "worksheets": sheets_info
-                    },
-                    "profiles_sheet": {
-                        "configured": bool(config.GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID),
-                        "spreadsheet_id": config.GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID or "Not configured",
-                        "worksheet_name": config.GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME or "Not configured"
-                    },
-                    "credentials": {
-                        "client_email": config.GOOGLE_SHEETS_CLIENT_EMAIL or "Not configured",
-                        "project_id": config.GOOGLE_SHEETS_PROJECT_ID or "Not configured"
-                    }
-                }
-            except Exception as e:
-                logger.error(f"Error fetching spreadsheet metadata: {e}")
-                return {
-                    "status": "connected",
-                    "message": "✅ Google Sheets connection successful (limited metadata)",
-                    "tracking_sheet": {
-                        "spreadsheet_id": sheets_service.spreadsheet_id,
-                        "worksheet_name": sheets_service.worksheet_name
-                    },
-                    "note": f"Connected but couldn't fetch full metadata: {str(e)}"
-                }
-        else:
-            # Provide more detailed troubleshooting information
-            spreadsheet_id_length = len(sheets_service.spreadsheet_id) if sheets_service.spreadsheet_id else 0
-            
-            suggestions = [
-                "1. Verify the spreadsheet ID is correct (should be ~44 characters from the URL)",
-                "2. Share the Google Sheet with the service account email",
-                f"3. Service account email: {config.GOOGLE_SHEETS_CLIENT_EMAIL}",
-                "4. Make sure you're using a Google Sheets ID, not a Drive file ID"
-            ]
-            
-            # Check if spreadsheet ID looks suspicious
-            if spreadsheet_id_length < 40:
-                suggestions.insert(0, f"⚠️  WARNING: Spreadsheet ID length ({spreadsheet_id_length}) is unusually short. Normal IDs are ~44 characters.")
-            
-            return {
-                "status": "connection_failed",
-                "message": "❌ Google Sheets connection test failed",
-                "details": {
-                    "spreadsheet_id": sheets_service.spreadsheet_id,
-                    "spreadsheet_id_length": spreadsheet_id_length,
-                    "worksheet_name": sheets_service.worksheet_name,
-                    "service_account_email": config.GOOGLE_SHEETS_CLIENT_EMAIL,
-                    "project_id": config.GOOGLE_SHEETS_PROJECT_ID,
-                    "troubleshooting": suggestions
-                },
-                "next_steps": {
-                    "1_get_correct_id": "Go to your Google Sheet > Copy the ID from the URL between '/d/' and '/edit'",
-                    "2_share_sheet": f"Share the Google Sheet with: {config.GOOGLE_SHEETS_CLIENT_EMAIL} (Editor access)",
-                    "3_example_url": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit"
-                }
-            }
-            
-    except ImportError as e:
-        logger.error(f"Failed to import Google Sheets service: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Google Sheets dependencies not installed: {str(e)}"
-        )
-    except Exception as e:
-        logger.error(f"Error testing Google Sheets connection: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to test Google Sheets connection: {str(e)}"
-        )
-
-@app.get(
     "/stats", 
     response_model=StatsResponse,
     tags=["Statistics"],
@@ -761,12 +610,12 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
     """
     ## Start Complete 3-Phase Lead Generation Pipeline
     
-    Executes the complete lead generation and enrichment pipeline with Google Sheets integration.
+    Executes the complete lead generation and enrichment pipeline.
     
     **3-Phase Process:**
     1. **Platform Profile Scraping** - Extracts professional profiles from Houzz or Architizer
     2. **Website Email Mining** - Extracts emails, phones, and social links using Playwright
-    3. **Email Validation & Processing** - Validates emails, selects best contacts, updates Google Sheets
+    3. **Email Validation & Processing** - Validates emails, selects best contacts
     
     **Validation & Quality Control:**
     - Validates the request parameters (location, profession, platform)
@@ -774,10 +623,6 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
     - Validates emails with ZeroBounce API
     - Removes profiles with no valid emails
     - Selects best emails (max 2, min 1) prioritizing personal > business
-    
-    **Google Sheets Integration:**
-    - Updates tracking sheet with completion status, execution time, and timestamp
-    - Appends validated profiles to profiles sheet for email campaign management
     
     **Returns:**
     - Success status and descriptive message
@@ -876,8 +721,7 @@ async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
             professional_type=request.professional_type,
             max_pages=request.max_pages,
             start_page=request.start_page,
-            platform=request.platform,
-            row_number=request.row_number
+            platform=request.platform
         )
         
         execution_time = round((time.time() - start_time) / 60, 2)

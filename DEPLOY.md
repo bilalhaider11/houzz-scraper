@@ -19,7 +19,6 @@ sudo apt-get install google-cloud-cli
 
 You need these API keys ready:
 - **ZeroBounce API Key** - Get from https://www.zerobounce.net/
-- **Google Sheets Service Account** - Create at https://console.cloud.google.com/iam-admin/serviceaccounts
 - **Proxy Credentials** (optional but recommended)
 
 ---

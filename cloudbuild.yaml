@@ -34,8 +34,10 @@ steps:
       - '--timeout'
       - '3600'
       - '--max-instances'
-      - '1'
+      - '5'
       - '--min-instances'
+      - '0'
+      - '--concurrency'
       - '1'
 
 # Store images in Google Container Registry

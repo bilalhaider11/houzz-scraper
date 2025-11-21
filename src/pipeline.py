@@ -3,13 +3,12 @@
 3-Phase Pipeline Architecture:
 1. Platform Profile Scraping (Houzz/Architizer) - Extracts professional profiles
 2. Website Email Mining (Playwright) - Extracts emails, phones, and social links from websites
-3. Email Validation & Processing - Validates emails, selects best contacts, updates Google Sheets
+3. Email Validation & Processing - Validates emails, selects best contacts
 
 Features:
 - Multi-platform support (Houzz and Architizer)
 - ZeroBounce email verification with smart email selection (max 2, min 1)
 - Intelligent email prioritization (personal > business)
-- Google Sheets integration for results tracking
 - Parallel processing with async operations
 - Resume capability and progress tracking
 """
@@ -27,7 +26,6 @@ from .models import ProfessionalProfile
 from .database_manager import DatabaseManager
 from .zerobounce_verifier import ZeroBounceVerifier
 from .architizer_scraper import ArchitizerScraper
-from .google_sheets_service import GoogleSheetsService
 from .email_prevalidation import EmailPreValidator
 from config.config import config
 
@@ -38,7 +36,6 @@ class LeadEnrichmentPipeline:
     def __init__(self):
         self.setup_logging()
         self.setup_directories()
-        self.google_sheets_service = GoogleSheetsService()
         self.email_prevalidator = EmailPreValidator()  # Pre-validation filter to save ZeroBounce credits
         
     def setup_logging(self):
@@ -62,13 +59,13 @@ class LeadEnrichmentPipeline:
         Path(config.OUTPUT_DIR).mkdir(exist_ok=True)
         Path(config.LOG_DIR).mkdir(exist_ok=True)
         
-    async def run_full_pipeline(self, location: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz", row_number: int = None) -> str:
+    async def run_full_pipeline(self, location: str = None, professional_type: str = None, max_pages: Optional[int] = None, start_page: int = 1, platform: str = "houzz") -> str:
         """
         Run the complete 3-phase lead generation pipeline.
         
         Phase 1: Platform Profile Scraping - Extract professional profiles
         Phase 2: Website Email Mining - Extract emails, phones, and social links from websites
-        Phase 3: Email Validation & Processing - Validate emails, select best contacts, update Google Sheets
+        Phase 3: Email Validation & Processing - Validate emails, select best contacts
         
         Args:
             location: Geographic location to scrape (e.g., 'usa', 'california')
@@ -76,7 +73,6 @@ class LeadEnrichmentPipeline:
             max_pages: Maximum number of pages to scrape
             start_page: Starting page number
             platform: Platform to scrape ('houzz' or 'architizer')
-            row_number: Google Sheets row number to update with results
             
         Returns:
             Dictionary with pipeline statistics and results
@@ -110,8 +106,8 @@ class LeadEnrichmentPipeline:
             logger.error(f"❌ Phase 2 Failed: Website scraping phase encountered error: {e}")
             logger.info("⚠️  Continuing with remaining phases...")
         
-        # Step 3: Email validation and processing with Google Sheets update
-        logger.info("✅ PHASE 3: Email Validation & Processing - Validating emails with ZeroBounce, selecting best contacts (max 2, min 1, prioritizing personal emails), and updating Google Sheets")
+        # Step 3: Email validation and processing
+        logger.info("✅ PHASE 3: Email Validation & Processing - Validating emails with ZeroBounce, selecting best contacts (max 2, min 1, prioritizing personal emails)")
         try:
             stats = await self.validate_and_process_emails(platform=platform, start_time=start_time)
             logger.info(f"✅ Phase 3 Complete: Email validation and processing finished successfully")
@@ -244,7 +240,6 @@ class LeadEnrichmentPipeline:
         2. Smart email selection (max 2, min 1) prioritizing personal > business emails
         3. Profile cleanup (removes profiles with no valid emails)
         4. Profile completion marking (marks validated profiles as completed)
-        5. Google Sheets update (updates results tracking sheet)
         
         Args:
             platform: Platform to process ('houzz' or 'architizer')
@@ -798,73 +793,3 @@ class LeadEnrichmentPipeline:
                 except Exception as e:
                     logger.error(f"Error closing database connection: {e}")
 
-    async def _update_google_sheets(self, stats: Dict[str, Any], row_number: int = None) -> None:
-        """
-        Update Google Sheets with pipeline completion results
-        
-        Args:
-            stats: Pipeline statistics dictionary
-            row_number: Row number to update (1-based). If None, will skip update.
-        """
-        try:
-            if not self.google_sheets_service.is_available():
-                logger.info("Google Sheets integration not available - skipping update")
-                return
-            
-            # Skip update if no row number provided
-            if row_number is None:
-                logger.info("No row number provided - skipping Google Sheets update")
-                return
-
-            profiles_processed = stats.get('total_profiles_processed', 0)
-            if profiles_processed <= 0:
-                logger.info("No profiles processed - skipping Google Sheets update")
-                return
-            
-            logger.info(f"📊 Updating Google Sheets row {row_number} with pipeline results...")
-            
-            # Test connection first
-            if not self.google_sheets_service.test_connection():
-                logger.warning("Google Sheets connection test failed - skipping update")
-                return
-            
-            # Update with results
-            success = self.google_sheets_service.update_pipeline_results(
-                total_time_minutes=stats.get('total_time_minutes', 0),
-                row_number=row_number
-            )
-            
-            if success:
-                logger.info(f"✅ Google Sheets row {row_number} updated successfully with pipeline results")
-            else:
-                logger.warning(f"⚠️ Failed to update Google Sheets row {row_number}")
-                
-        except Exception as e:
-            logger.error(f"Error updating Google Sheets: {e}")
-            # Don't raise the exception - Google Sheets update failure shouldn't break the pipeline
-
-    async def _update_profiles_sheet(self, stats: Dict[str, Any]) -> None:
-        """
-        Update Google Sheets profiles sheet with profile names and emails
-        
-        Args:
-            stats: Pipeline statistics dictionary containing profiles
-        """
-        try:
-            if not self.google_sheets_service.is_available():
-                logger.info("Google Sheets service not available - skipping profiles sheet update")
-                return
-            
-            logger.info("📊 Updating profiles sheet with profile data...")
-            
-            # Update profiles sheet
-            success = self.google_sheets_service.update_profiles_sheet(stats)
-            
-            if success:
-                logger.info("✅ Profiles sheet updated successfully")
-            else:
-                logger.warning("⚠️ Failed to update profiles sheet")
-                
-        except Exception as e:
-            logger.error(f"Error updating profiles sheet: {e}")
-            # Don't raise the exception - Profiles sheet update failure shouldn't break the pipeline

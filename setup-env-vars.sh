@@ -128,20 +128,6 @@ case $CHOICE in
         
         # Required variables
         read -p "ZeroBounce API Key: " ZEROBOUNCE_API_KEY
-        read -p "Google Sheets Spreadsheet ID: " GOOGLE_SHEETS_SPREADSHEET_ID
-        read -p "Google Sheets Worksheet Name [Sheet1]: " GOOGLE_SHEETS_WORKSHEET_NAME
-        GOOGLE_SHEETS_WORKSHEET_NAME=${GOOGLE_SHEETS_WORKSHEET_NAME:-Sheet1}
-        read -p "Google Sheets Client Email: " GOOGLE_SHEETS_CLIENT_EMAIL
-        read -p "Google Sheets Project ID: " GOOGLE_SHEETS_PROJECT_ID
-        read -p "Google Sheets Profiles Spreadsheet ID: " GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID
-        read -p "Google Sheets Profiles Worksheet Name [Profiles]: " GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME
-        GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME=${GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME:-Profiles}
-        
-        echo ""
-        echo "Enter Google Sheets Private Key (paste the entire key including BEGIN/END lines):"
-        echo "Press Ctrl+D when done:"
-        GOOGLE_SHEETS_PRIVATE_KEY=$(cat)
-        
         echo ""
         read -p "Proxy Username: " PROXY_USERNAME
         read -p "Proxy Password: " PROXY_PASSWORD
@@ -152,13 +138,6 @@ case $CHOICE in
         CMD="gcloud run services update $SERVICE_NAME --region $REGION"
         
         [ -n "$ZEROBOUNCE_API_KEY" ] && CMD="$CMD --update-env-vars ZEROBOUNCE_API_KEY=$ZEROBOUNCE_API_KEY"
-        [ -n "$GOOGLE_SHEETS_SPREADSHEET_ID" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_SPREADSHEET_ID=$GOOGLE_SHEETS_SPREADSHEET_ID"
-        [ -n "$GOOGLE_SHEETS_WORKSHEET_NAME" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_WORKSHEET_NAME=$GOOGLE_SHEETS_WORKSHEET_NAME"
-        [ -n "$GOOGLE_SHEETS_CLIENT_EMAIL" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_CLIENT_EMAIL=$GOOGLE_SHEETS_CLIENT_EMAIL"
-        [ -n "$GOOGLE_SHEETS_PROJECT_ID" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_PROJECT_ID=$GOOGLE_SHEETS_PROJECT_ID"
-        [ -n "$GOOGLE_SHEETS_PRIVATE_KEY" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_PRIVATE_KEY=$GOOGLE_SHEETS_PRIVATE_KEY"
-        [ -n "$GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID=$GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID"
-        [ -n "$GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME" ] && CMD="$CMD --update-env-vars GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME=$GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME"
         [ -n "$PROXY_USERNAME" ] && CMD="$CMD --update-env-vars PROXY_USERNAME=$PROXY_USERNAME"
         [ -n "$PROXY_PASSWORD" ] && CMD="$CMD --update-env-vars PROXY_PASSWORD=$PROXY_PASSWORD"
         [ -n "$USE_PROXY_ROTATION" ] && CMD="$CMD --update-env-vars USE_PROXY_ROTATION=$USE_PROXY_ROTATION"

@@ -14,13 +14,12 @@ A production-ready FastAPI application for scraping and enriching leads from **H
 ### 🚀 3-Phase Pipeline Architecture
 - **Phase 1**: Platform Profile Scraping (Houzz/Architizer)
 - **Phase 2**: Advanced Website Email Mining (Playwright)
-- **Phase 3**: Email Validation & Processing with Google Sheets Integration
+- **Phase 3**: Email Validation & Processing
 
 ### 🔧 Advanced Features
 - **✅ ZeroBounce Integration**: Production-grade email verification with smart credit management
 - **🌐 Playwright Automation**: JavaScript-heavy website scraping with browser automation
 - **📊 Intelligent Email Selection**: Smart selection (max 2, min 1) prioritizing personal > business emails
-- **📈 Google Sheets Integration**: Automated results tracking and profile management for email campaigns
 - **💾 SQLite Database**: Persistent storage with progress tracking and resume capability
 - **🛡️ Anti-Detection**: CAPTCHA handling, proxy support, rate limiting, user-agent rotation
 - **⚡ High Performance**: Concurrent processing, efficient database operations, memory optimization
@@ -346,7 +345,7 @@ curl -X POST http://localhost:8000/scrape \
 
 ---
 
-### Phase 3: ✅ Email Validation & Processing with Google Sheets Integration
+### Phase 3: ✅ Email Validation & Processing
 **What it does:**
 **Email Validation (ZeroBounce):**
 - Verifies email deliverability using ZeroBounce API
@@ -360,10 +359,6 @@ curl -X POST http://localhost:8000/scrape \
 - Removes profiles with no valid emails (data quality control)
 - Marks validated profiles as completed in the database
 
-**Google Sheets Integration:**
-- Updates pipeline tracking sheet with execution results
-- Updates row-specific data: completion status, execution time, timestamp
-- Appends validated profiles to profiles sheet for email campaign management
 - Includes columns: email, name, status tracking fields
 
 **Profile Data Management:**
@@ -373,7 +368,7 @@ curl -X POST http://localhost:8000/scrape \
 
 **Note:** This phase runs automatically as part of the complete pipeline.
 
-**Output:** Database profiles marked as completed, Google Sheets updated with results and validated contact data.
+**Output:** Database profiles marked as completed with validated contact data.
 
 ---
 
@@ -723,14 +718,6 @@ Create a `.env` file in the project root with the following variables:
 # Required API Keys
 ZEROBOUNCE_API_KEY=your_zerobounce_api_key_here
 
-# Optional Google Sheets Integration (for automated results tracking)
-GOOGLE_SHEETS_SPREADSHEET_ID=your_tracking_spreadsheet_id
-GOOGLE_SHEETS_WORKSHEET_NAME=Sheet1
-GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID=your_profiles_spreadsheet_id
-GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME=Sheet1
-GOOGLE_SHEETS_CLIENT_EMAIL=your_service_account@project.iam.gserviceaccount.com
-GOOGLE_SHEETS_PRIVATE_KEY=your_private_key_here
-GOOGLE_SHEETS_PROJECT_ID=your_project_id
 
 # Optional Proxy Settings
 PROXY_USERNAME=your_proxy_username
@@ -752,15 +739,6 @@ LOG_DIR=logs
 
 The system supports comprehensive configuration through `config/config.py` and environment variables:
 
-#### Google Sheets Integration (Optional)
-Set these environment variables to enable Google Sheets integration:
-- `GOOGLE_SHEETS_SPREADSHEET_ID`: Main tracking spreadsheet ID
-- `GOOGLE_SHEETS_WORKSHEET_NAME`: Worksheet name (default: "Sheet1")
-- `GOOGLE_SHEETS_PROFILES_SPREADSHEET_ID`: Profiles spreadsheet ID for email campaigns
-- `GOOGLE_SHEETS_PROFILES_WORKSHEET_NAME`: Profiles worksheet name (default: "Sheet1")
-- `GOOGLE_SHEETS_CLIENT_EMAIL`: Service account email
-- `GOOGLE_SHEETS_PRIVATE_KEY`: Service account private key
-- `GOOGLE_SHEETS_PROJECT_ID`: Google Cloud project ID
 
 #### Location Support
 - **USA Nationwide**: `location: "usa"` for all US states
