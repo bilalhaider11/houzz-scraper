@@ -88,7 +88,6 @@ class ScrapeRequest(BaseModel):
         1, 
         description="Starting page number for scraping",
         ge=1,
-        le=1000,
         example=1
     )
     
